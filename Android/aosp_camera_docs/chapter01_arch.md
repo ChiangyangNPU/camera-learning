@@ -1,5 +1,7 @@
 # 第 1 章 概览与架构
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 > 本章内容整理自 AOSP 官方文档（中文版）Camera 板块的三个页面：
 > [概览](https://source.android.google.cn/docs/core/camera)、
 > [相机 HAL](https://source.android.google.cn/docs/core/camera/camera3)、

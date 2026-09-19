@@ -1,5 +1,7 @@
 # 第 3 章 createCaptureSession 与请求提交链路
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 > 本章基于 AOSP main 分支真实源码整理，函数名与行为均出自所列源文件，行号为当前 main 分支时点。所有图为 Mermaid 语法。
 
 ## 3.1 Java 层：createCaptureSession

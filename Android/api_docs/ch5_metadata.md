@@ -1,5 +1,7 @@
 # 第 5 章 元数据体系（camera_metadata）
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 Camera2/HAL3 的一切控制与结果传递都建立在 `camera_metadata` 之上：应用下发的是一份份元数据（CaptureRequest），HAL 返回的也是元数据（CaptureResult），设备能力描述同样是一份元数据（CameraCharacteristics）。本章基于 AOSP `system/media` 仓库的源码，梳理这套体系的 C API、tag 组织方式、条目总量统计与厂商扩展机制。
 
 ---

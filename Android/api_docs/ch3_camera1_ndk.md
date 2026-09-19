@@ -1,5 +1,7 @@
 # 第 3 章 Camera1（旧版）与 NDK 相机接口
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 > 本章为接口速查 + 学习总结。Camera1 指 `android.hardware.Camera`（API 1 引入，API 21 起 deprecated，被 Camera2 取代但仍长期维护）；NDK 相机接口指 libcamera2（`<camera/NdkCamera*.h>`，API 24 起可用），是 Java Camera2 的 C 封装。
 
 ## 3.1 Camera1 概览：定位、状态机与生命周期

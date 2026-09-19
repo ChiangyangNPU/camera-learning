@@ -1,5 +1,7 @@
 # 第 1 章 Camera2 API（android.hardware.camera2）
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 > 本章是 `android.hardware.camera2` 包的接口速查 + 学习总结，面向学习 Android Camera 的工程师。内容基于官方 API Reference 整理归纳，技术名词保留英文。
 
 ## 1.1 包概览与整体架构

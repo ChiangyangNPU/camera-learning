@@ -1,5 +1,7 @@
 # 第 2 章 openCamera 完整调用链
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 > 本章基于 AOSP main 分支（2026-09 时点）真实源码整理，所有函数名、行号均出自所列源文件。沿一次 `openCamera()` 从 Java 层一路走到 provider 进程的 HAL `ICameraDevice::open`，并完整拆解 cameraserver 的权限校验、优先级仲裁与驱逐逻辑。流程图均为 Mermaid 语法。
 
 ## 2.1 Java 层：CameraManager.openCamera 与 openCameraDeviceUserAsync

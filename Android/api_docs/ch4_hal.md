@@ -1,5 +1,7 @@
 # 第 4 章 HAL 层接口（camera3.h 与 AIDL Camera HAL）
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 > 本章基于 AOSP main 分支源码整理（抓取日期 2026-09-05）：
 > `hardware/libhardware/include_all/hardware/camera3.h`、`camera_common.h`，以及 `hardware/interfaces/camera/` 下的 AIDL 接口定义。
 > 说明：main 分支上 `include/hardware/camera3.h` 已是指向 `include_all/hardware/camera3.h` 的符号链接，两者内容相同。

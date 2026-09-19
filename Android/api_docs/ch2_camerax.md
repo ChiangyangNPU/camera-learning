@@ -1,5 +1,7 @@
 # 第 2 章 CameraX（androidx.camera）
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 ## 2.1 CameraX 概览
 
 > 来源：[CameraX | Android Developers（Jetpack Release 页）](https://developer.android.google.cn/jetpack/androidx/releases/camera)

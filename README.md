@@ -51,3 +51,4 @@ ISP/3A 文档额外特性：厂商闭源内容（CAMX/mtkcam 内部）按 **A（
 - 2026-09-05：首次整理，完成 Android 相机学习文档与接口文档，配图本地化。
 - 2026-09-06：新增《Android_Camera_源码链路文档》（framework/CameraService 源码链路 4 章，21 张 Mermaid 图，全部结论出自 AOSP main 分支源码并附行号）。
 - 2026-09-06：新增《Android_Camera_ISP_3A文档》（sensor/ISP 管线、3A 算法与平台 HAL 4 章，24 张 Mermaid 图；含 libcamera 开源算法分析、Qualcomm 官方文档引用，内容按 A/B/C 可信度分层标注）。
+- 2026-09-19：ISP/3A 文档第 3 章扩充：新增闪光灯 3A 与 precapture 时序（3.2.7）、AWB Bayes 色温估计算法逐函数分析（3.3.5）、多摄 3A 同步元数据与变焦切换（3.5.5）；全部分章源文件加入与主文档的同步声明。

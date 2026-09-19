@@ -1,10 +1,12 @@
 # 第 3 章 3A 算法深入（AE / AWB / AF）
 
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
 本章面向学习 Android 相机底层 / ISP 的工程师，讲清 3A（AE 自动曝光 / AWB 自动白平衡 / AF 自动对焦）"统计采集 → 算法计算 → 参数下发"的闭环如何工作。第 2 章 2.3 节已讲过统计元数据与 rkisp1 统计块，2.5 节已讲过 libcamera IPA 的 Algorithm 框架；本章在此基础上往下钻一层——**直接读开源算法源码**。libcamera 的 rkisp1 / IPU3 IPA 模块是公开生态中少有的"完整可读"的 3A 参考实现，是理解厂商 HAL 里那套黑盒的最佳教材。
 
 **材料可信度分层约定**与第 1、2 章相同：A 层 = 可验证官方资料（libcamera 开源算法源码、内核文档、AOSP API 参考与元数据、仓库内文档），B 层 = 公开通行知识（算法原理、厂商公开材料、公开学术资料），C 层 = 社区研究（须标注出处，谨慎采信）。
 
-> 说明：libcamera rkisp1 IPA 的 `algorithms/` 目录经 GitHub API 目录清单核实**不含 AF 算法**（共 14 个算法：agc、awb、blc、ccm、compress、cproc、dpcc、dpf、filter、goc、gsl、lsc、lux、wdr），因此本章 AF 部分采用 Intel IPU3 IPA 的 `af.cpp`（A 层，同仓库 master 分支抓取）。libcamera 的控制项名与 Android 元数据一一对应（`AeEnable` ↔ `CONTROL_AE_MODE` 等，源出 Android HAL3 规范），行文时两套名字并给出。
+> 说明：libcamera rkisp1 IPA 的 `algorithms/` 目录经 GitHub API 目录清单核实**不含 AF 算法**（共 14 个算法：agc、awb、blc、ccm、compress、cproc、dpcc、dpf、filter、goc、gsl、lsc、lux、wdr），因此本章 AF 部分采用 Intel IPU3 IPA 的 `af.cpp`（A 层，同仓库 master 分支抓取）。libcamera 的控制项名与 Android 元数据一一对应（`AeEnable` ↔ `CONTROL_AE_MODE` 等，源出 Android HAL3 规范），行文时两套名字并给出。本章所引 libcamera 源码均抓取于 2026-09（GitHub 镜像 master 分支）；另核实其 `control_ids_core.yaml` 未定义任何闪光灯控制项（A 层，可复现），3.2.7 节闪光灯内容以 Android 元数据体系为准。
 
 ---
 
@@ -127,13 +129,63 @@ flowchart TD
 
 曝光表（3.2.4）正是这套权衡的**可调参编码**——ExposureModeHelper 类文档原话："这个方法让用户在'曝光良好的图像'与'可接受的帧率'之间取得平衡"（A 层）。Android 侧的标准接口是请求项 `CONTROL_AE_TARGET_FPS_RANGE`：官方定义为"自动曝光例程为维持良好曝光可调整采集帧率的范围"（摘译），且"只约束 AE 算法，不约束手动设置的 `sensor.exposureTime` 与 `sensor.frameDuration`"（A 层，[CaptureRequest API 参考](https://developer.android.google.cn/reference/android/hardware/camera2/CaptureRequest)）；libcamera 对应概念是 `FrameDurationLimits`（经 `AgcMeanLuminance::setLimits()` 进入 `ExposureModeHelper` 的 min/max 限制）。ISO 权衡则落在 `sensor.info.maxAnalogSensitivity`（第 1 章 1.2.2）与曝光表的增益档位上。
 
+### 3.2.7 闪光灯：AE 闭环的联动子系统（A 层接口 + B 层原理）
+
+> 来源：A 层——[CaptureRequest / CaptureResult 官方参考](https://developer.android.google.cn/reference/android/hardware/camera2/CaptureRequest)（SDK sources android-36 Javadoc，本文摘译）、[AOSP metadata_definitions.xml](https://android.googlesource.com/platform/system/media/+/refs/heads/main/camera/docs/metadata_definitions.xml)（aeMode / aePrecaptureTrigger 条目，本文抓取）；B 层——闪光与环境曝光合成的通行描述；A 层对照——libcamera `control_ids_core.yaml` 经抓取核实**未定义任何闪光灯控制项**（2026-09，可复现）
+
+3A 的文献与开源样本常把第四个参与方略过：**闪光灯**。它不是独立的自动算法，而是 AE 闭环上的一个联动子系统——AE 负责决策"要不要闪、闪多强"，precapture 序列负责在正式拍照前把决策做准。
+
+**AE 模式的三个闪光变体**（A 层，metadata_definitions.xml 摘译）：
+
+| `CONTROL_AE_MODE` 值 | 官方定义（摘译） |
+|---|---|
+| `ON_AUTO_FLASH` | "与 ON 相同，此外相机设备还控制闪光单元，在低照度条件下出光" |
+| `ON_ALWAYS_FLASH` | "与 ON 相同，此外相机设备还控制闪光单元，静拍时总是出光" |
+| `ON_AUTO_FLASH_REDEYE` | "与 ON_AUTO_FLASH 相同，但带自动红眼消除"；"若设备判定必要，红眼消除预闪会在 precapture 序列中出光" |
+
+**"要不要闪"的判定落点**是 `CONTROL_AE_STATE`：官方状态转移表明确——AE 扫描或 precapture 序列完成后，"已收敛但**无闪光会太暗**"（"Converged but too dark w/o flash"）即进入 `FLASH_REQUIRED`，场景变亮后经新扫描回到 `CONVERGED`（A 层，CaptureResult 参考）。应用据此可在零快门延迟队列里预判"这一帧需不需要闪光"。
+
+**precapture 序列**（`CONTROL_AE_PRECAPTURE_TRIGGER`）的官方语义（A 层，CaptureRequest 参考）：
+
+- **目的**："在启动高质量静拍之前触发……以做出最终测光决策；闪光使能时，还会**出预闪脉冲以估计场景亮度与正式拍摄所需的闪光功率**"——序列本身就是 AE 为闪光曝光做的标定阶段；
+- **序列中闪光使能的三种情况**：`AE_MODE=ON_ALWAYS_FLASH`；`ON_AUTO_FLASH` 且场景"无闪光过暗"；`AE_MODE=ON` 且 `flash.mode=TORCH/SINGLE`；
+- **使用规则**：`START` 只在单个请求中设置，应用**须等序列完成**（`AE_STATE` 离开 `PRECAPTURE`）再提交静拍；序列完成后设备"可能在内部锁定 AE，以精确曝光随后的静拍"（`captureIntent=STILL_CAPTURE`）——若应用最终不拍照，需用 `AE_LOCK=true→false` 或 `CANCEL`（API 23+）解锁，否则 AE 可能停在锁定态不恢复扫描；
+- **LEGACY 设备**不支持该触发：拍摄高分辨率 JPEG 时框架自动代触发 precapture（含预闪）；
+- **与 `AF_TRIGGER` 并发**：允许同请求下发，设备按最优顺序处理（可能推迟处理后到的触发）。
+
+```mermaid
+sequenceDiagram
+    participant APP as 应用
+    participant AE as AE（HAL 内 3A）
+    participant FL as 闪光灯
+    APP->>AE: CONTROL_AE_PRECAPTURE_TRIGGER = START（仅此一帧）
+    AE->>APP: AE_STATE = PRECAPTURE（瞬态）
+    AE->>FL: 预闪脉冲（闪光使能时）<br/>估计场景亮度与所需闪光功率
+    AE->>APP: 序列完成 → FLASH_REQUIRED（无闪光太暗）<br/>或 CONVERGED
+    Note over AE: 可能隐式锁定 AE<br/>等待 STILL_CAPTURE 静拍
+    APP->>AE: 静拍请求（captureIntent = STILL_CAPTURE）
+    AE->>FL: 主闪出光
+    AE->>APP: flash.state = FIRED + 成图
+    APP->>AE: （未拍照时）CANCEL 或 AE_LOCK true→false 解锁
+```
+
+**执行侧元数据**（A 层，CaptureRequest/CaptureResult 参考；`firingPower/firingTime` 存在于 AOSP 元数据定义但未进入公开 Java/NDK API——SDK sources 与 NDK 头文件核实均无，属 HAL 层条目）：
+
+| Key | 方向 | 语义（摘译） |
+|---|---|---|
+| `flash.mode` | 请求 | `OFF`（本次不出光）/ `SINGLE`（**无视 AE 结论**出光，官方提醒"应配合 precapture 序列使用，否则图像可能曝光错误"）/ `TORCH`（持续点亮，供预览/对焦辅助/录像）。仅在 `AE_MODE=ON/OFF` 时生效，AE 的闪光变体会覆盖它 |
+| `flash.state` | 结果 | `UNAVAILABLE` / `CHARGING`（充电中不可出光）/ `READY` / `FIRED`（本次已出光）/ `PARTIAL`（部分出光）；无闪光设备恒为 UNAVAILABLE；LEGACY 设备仅 `TORCH` 与 `ON_ALWAYS_FLASH` 恒报 `FIRED` |
+| `flash.firingPower` / `flash.firingTime` | 非公开 | 闪光出光功率（0 = 未出光）与出光时刻（相机时间戳域），供上层对齐闪光事件与曝光窗口（键存在性 A 层可复现；通行语义为 B 层描述） |
+
+对照开源参考实现：libcamera 的核心控制清单（`control_ids_core.yaml`）没有任何闪光灯/手电筒控制项（A 层，2026-09 抓取核实）——预闪标定、功率决策、红眼消除这条成熟链条是厂商 HAL 的私有资产，学习时以官方元数据语义 + 手上平台实现为准（B 层收束）。
+
 ---
 
 ## 3.3 AWB 深入：灰世界、白块统计与增益计算
 
 > 来源：A 层——libcamera 源码（GitHub 镜像 master 分支，本文抓取解析）：src/ipa/rkisp1/algorithms/awb.cpp、src/ipa/libipa/awb.cpp、awb.h、awb_grey.cpp、colours.cpp、control_ids_core.yaml；B 层——灰世界假设、色温（Planckian 轨迹）与 McCamy 公式为公开色彩科学知识；仓库内文档：Android/Android_Camera_学习文档.md（2.1.6 AWB 模式与状态）
 
-libcamera 的 AWB 被拆成三层（A 层）：平台层 `rkisp1/algorithms/awb.cpp`（硬件统计 + 域还原）→ 公共调度层 `libipa/awb.cpp` 的 `AwbAlgorithmBase`（模式/手动控制/平滑）→ 具体算法层 `libipa/awb_grey.cpp`（GreyWorld）与 `awb_bayes.cpp`（Bayes）。tuning 键 `algorithm: grey|bayes` 选择实现，缺省 grey（awb.cpp 源码："No AWB algorithm specified, using grey world"）。本节以 GreyWorld 为主线，Bayes 只点到文件为止。
+libcamera 的 AWB 被拆成三层（A 层）：平台层 `rkisp1/algorithms/awb.cpp`（硬件统计 + 域还原）→ 公共调度层 `libipa/awb.cpp` 的 `AwbAlgorithmBase`（模式/手动控制/平滑）→ 具体算法层 `libipa/awb_grey.cpp`（GreyWorld）与 `awb_bayes.cpp`（Bayes）。tuning 键 `algorithm: grey|bayes` 选择实现，缺省 grey（awb.cpp 源码："No AWB algorithm specified, using grey world"）。本节先以 GreyWorld 为主线，3.3.5 节再以同样深度展开 Bayes 实现。
 
 ### 3.3.1 灰世界假设与白块筛选（B 层原理 + A 层硬件参数）
 
@@ -190,7 +242,51 @@ flowchart TD
 
 色温（CCT）描述与给定光源色度最接近的黑体辐射体温度（开尔文）：烛光 ~1900K、白炽灯 ~2700K、日光 ~5500–6500K、阴天 ~6500–7500K、蓝天阴影 ~7500K 以上——这些正是 Android `CONTROL_AWB_MODE` 预设枚举的标定锚点（仓库内文档：Android/Android_Camera_学习文档.md 2.1.6：`INCANDESCENT` 约 2700K、`FLUORESCENT` 约 5000K、`DAYLIGHT` 约 5500K、`CLOUDY_DAYLIGHT` 约 6500K、`SHADE` 约 7500K、`TWILIGHT` 约 15000K）。tuning 中的 `colourGains` 曲线即"沿色温轴采样的白点标定表"：产线在若干标准光源下标出白点增益，运行期按估计色温插值——这是所有商用 AWB 共用的骨架，区别只在"白点估计"与"增益合成"的精细度（B 层，通行描述）。
 
-作为对照：libcamera tuning 文件里 `src/ipa/rkisp1/data/imx219.yaml` 的 `Awb:` 段是**空的**（本文抓取核实）——即 imx219 直接运行"无 tuning 的 GreyWorld 默认行为"；而 Bayes 实现（awb_bayes.cpp，文件存在、本文未展开）用贝叶斯推断把"灰世界证据"与"色温曲线先验"加权融合，属于灰世界局限的通行改进方向（前半句 A 层文件清单，后半句 B 层通行描述）。
+作为对照：libcamera tuning 文件里 `src/ipa/rkisp1/data/imx219.yaml` 的 `Awb:` 段是**空的**（本文抓取核实）——即 imx219 直接运行"无 tuning 的 GreyWorld 默认行为"；而 Bayes 实现用贝叶斯推断把"灰世界证据"与"色温曲线先验"加权融合，属于灰世界局限的通行改进方向，其完整实现在 3.3.5 节逐函数展开（B 层通行描述）。
+
+### 3.3.5 AWB Bayes：色温轴上的贝叶斯估计（A 层）
+
+> 来源：A 层——libcamera 源码（GitHub 镜像 master 分支，2026-09 抓取解析）：src/ipa/libipa/awb_bayes.cpp、src/ipa/libipa/awb.cpp（公共调度层，3.3.3 已引）；B 层——"目标函数 = 对数似然"与普朗克轨迹两侧偏移的通行解释
+
+3.3.3 的 GreyWorld 把色温当"附赠报告"；Bayes 把色温变成**决策变量**。`AwbBayes` 类文档开宗明义（A 层，原文摘译）："贝叶斯 AWB 在估计中引入**基于 lux 的光源可能性**——例如画面很亮时，可以假设在户外，优先考虑 6500K 附近的色温"；并强调"没有先验时搜索本身效果已经很好"。
+
+**tuning 输入**（A 层，init()/readPriors()）：
+
+- `colourGains`（与 3.3.3 同键）：`ct → [gain_r, gain_b]` 插值表（绿通道锚 1.0）。Bayes 从它构建两条**逆增益曲线** `ctR_`（ct→1/g_r）与 `ctB_`（ct→1/g_b）及其反函数——搜索在逆增益域进行，最终增益由取倒数得到；
+- `priors`：每组先验绑定一个 `lux`（不可重复），内含平行的 `ct` / `probability` 数组构成 ct→probability 的 Pwl 曲线；"先验概率必须大于 1e-6"；tuning 未提供 priors 时 init 返回 -EINVAL（Bayes 必须有先验表，无默认）。
+
+**计算流程**（A 层，函数实名）：
+
+```mermaid
+flowchart TD
+    S["AwbStats<br/>（3.3.2 域还原后的 RGB 均值）"] --> C{"lux > 0？"}
+    C -->|"是"| P["prior = priors_ 按 lux 插值<br/>（每 lux 一条 ct→probability 曲线）"]
+    C -->|"否"| Q["prior = 常数 1.0<br/>（平坦先验，退化为纯灰世界搜索）"]
+    P --> D["coarseSearch：t 从 range[0] 步进到 range[1]<br/>t += t/10 × kSearchStep（0.2）<br/>range 即 AwbMode 的 {ctLo, ctHi}（仅 Bayes 使用模式）"]
+    Q --> D
+    D --> E["每个 t：r = ctR_.eval(t)，b = ctB_.eval(t)<br/>目标值 = computeColourError(gains) − log(prior.eval(t))"]
+    E --> F["interpolateQuadratic 三点二次插值<br/>细化亚步长最佳点"]
+    F --> G["fineSearch：步长 ×0.1、每档横向偏移<br/>numDeltas = clamp(⌊横向范围×100+0.5⌋+1, 3, 12)<br/>偏移带 [−transverseNeg_, +transversePos_]（默认 ±0.01）"]
+    G --> H["calculateAwb 返回 gains = {1/r, 1.0, 1/b}<br/>色温 t 一并上报 → 公共调度层 clamp + 0.2 平滑（3.3.3）"]
+```
+
+三个实现要点：
+
+- **目标函数的含义**（表达式 A 层，解释 B 层）：`computeColourError(gains)` 正是 3.3.2 的"非灰度"平方误差——施加候选增益后场景偏离灰世界的程度；`− log(prior)` 是对数先验。两者相加取最小 = 最大化"灰世界似然 × 光源先验"，即最大后验（MAP）估计在色温一维轴上的实现；
+- **横向偏移搜索**是 Bayes 的独门细节：真实光源色度并不严格落在普朗克轨迹（CCT 轴）上，fineSearch 的 transverse 方向取 CT 曲线切向的单位正交向量，`transversePos_` 官方注释为"偏离 CT 曲线向'更紫'"、`transverseNeg_` 为"向'更绿'"（默认各 0.01）——允许最终白点在轨迹两侧的窄带内游走（A 层注释；背景为 B 层色彩科学：荧光灯偏绿、部分 LED 偏紫红，不在黑体轨迹上）；
+- **诚实边界**：源码 todo 区如实列出继承自 Raspberry Pi 原版**未实现**的部分——`min_pixels`（有效区域最小像素占比）、`min_g`（G 最小值）、`min_regions`（最少有效区域数）、`deltaLimit`（颜色误差钳位）、`bias_proportion`/`bias_ct`（搜索偏置）、`sensitivityR/B`（传感器响应比校正）。即**像素级白块质量筛选不在此算法内**，仍依赖 3.3.1 的硬件统计阈值；另注意 `gainsFromColourTemperature()` 纯查表无统计参与（手动色温路径，源码注明 Raspberry Pi 原版在白点倒数域插值而本版改在增益域）。
+
+与 GreyWorld 的对照（A 层实现归纳）：
+
+| 维度 | AwbGrey（3.3.3） | AwbBayes（本节） |
+|---|---|---|
+| 决策变量 | 直接算通道增益 | 色温 t（经 ctR_/ctB_ 曲线映射回增益） |
+| 先验 | 无 | lux → ct 概率表（tuning priors） |
+| 搜索 | 一步比值 | 色温范围粗搜 + 轨迹横向带细搜 |
+| 色温的角色 | 只用于元数据报告 | 决策变量 + 报告 |
+| AwbMode 模式 | 固定 {0,0}（源码注明不支持） | {ctLo, ctHi} 即搜索范围 |
+
+对 3.6 节"厂商 AWB = 多白点证据融合 + 色温曲线先验"而言，AwbBayes 就是这句话的**最小可读样本**：证据 = 灰世界误差，先验 = 按照度挑选的色温分布，融合 = 对数域相加取最小。厂商实现把"证据"换成多区域/多光源统计、把"先验"做得更细，骨架不变（B 层归纳）。
 
 ---
 
@@ -307,6 +403,25 @@ flowchart TD
 
 另一个横切项是 `CONTROL_CAPTURE_INTENT`：官方语义为"向相机设备 3A 例程提供信息……帮助决定最优 3A 策略"（A 层，[CaptureRequest 参考](https://developer.android.google.cn/reference/android/hardware/camera2/CaptureRequest)）——预览/录像/拍照/ZSL 各模板预置不同 intent（仓库内文档：接口文档 1.4 节 Template 一览），3A 据此调收敛速度与偏好（如录像避免激进曝光跳变，B 层通行做法）。
 
+### 3.5.5 多摄场景下的 3A：同步元数据与变焦切换（A 层 + B 层）
+
+> 来源：A 层——[CameraCharacteristics / CaptureRequest 官方参考](https://developer.android.google.cn/reference/android/hardware/camera2/CameraCharacteristics)（SDK sources android-36 Javadoc 摘译）、[AOSP 多摄像头支持文档](https://source.android.google.cn/docs/core/camera/multi-camera?hl=zh-cn)（本文抓取）；仓库内文档：Android/Android_Camera_学习文档.md 第 7.1 节（逻辑多摄像头概念）；B 层——跨相机 3A 一致性的通行描述
+
+逻辑多摄像头（学习文档 7.1：多个物理相机挂在同一个 `CameraDevice` 下）把 3A 从"单回路"变成"多回路协同"：变焦跨越物理相机切换点时，AE/AWB/AF 要从一颗 sensor 的参数连续过渡到另一颗。Android 标准化的只有**能力通告与坐标语义**，协同算法本身在 HAL 内。
+
+**物理相机时间戳同步能力**：静态元数据 `logicalMultiCamera.sensorSyncType`（A 层，官方定义摘译）：
+
+| 值 | 官方语义（摘译） |
+|---|---|
+| `APPROXIMATE` | 帧时间戳同步精度较低——两 sensor 通常运行在 **leader/leader** 模式，"各自使用自己的时序发生器，曝光开始之间可能存在偏移"；AOSP 文档概括为"主主模式下不执行硬件快门/曝光同步" |
+| `CALIBRATED` | 帧时间戳同步精度高——通常运行在 **leader/follower** 模式，"一个 sensor 为另一个产生时序信号，使快门时刻同步"；AOSP 文档概括为"主辅模式下执行硬件快门/曝光同步" |
+
+官方同时强调：无论哪种模式，"同一 capture request 生成的所有图像仍携带相同的时间戳"（供查帧号与 `onCaptureStarted` 回调）；该键仅在逻辑相机支持多物理相机并发流时适用。对应用的意义（B 层归纳）：双摄融合类用例（景深、双景录像、变焦中段拼接）在 `CALIBRATED` 设备上可假设两路帧近似同时曝光，`APPROXIMATE` 设备则须容忍帧间偏移——这是 1.5.3 时间戳语义在多摄下的延伸。
+
+**一个常见误读**（A 层定义辨析）：`sync.maxLatency` 与 `sync.frameNumber` 名字里带 sync，但与多摄时间戳同步**无关**——官方定义分别是"新控制提交后、结果状态完全同步前最多经过的帧数"（枚举 `PER_FRAME_CONTROL` / `UNKNOWN`）与"该结果的全部控制与缓冲已完全对齐到的帧号"（`CONVERGING` / 非负帧号 / `UNKNOWN`，@hide）。它们描述的是**请求→结果的管线同步延迟**，不是物理相机间的时间戳对齐。
+
+**变焦切换时框架规定的 3A 相关义务**（A 层，AOSP 多摄像头文档）：`CONTROL_ZOOM_RATIO` 变化时 HAL 必须**换算** crop 区域、AE/AWB/AF 测光区域与人脸框坐标系；若超广角固定对焦而长焦支持 AF，逻辑相机必须**模拟超广角的 AF 状态机**使应用透明；配置了 RAW 流时"不得切换到传感器尺寸不同的物理子相机"。3A 参数本身（两颗模组的曝光表、白点曲线、对焦行程）在切换瞬间的连续性无标准元数据承载——全部封装在 HAL 内部（B 层，与 3.6 节、4.2.6 节"3A 在用户态 HAL"的边界一致）。
+
 ---
 
 ## 3.6 厂商 3A 与开源 3A 的差距
@@ -315,7 +430,7 @@ flowchart TD
 
 把本章读过的 libcamera 算法与商用旗舰的 3A 放在一起，差距大致在四层（B 层归纳）：
 
-1. **算法复杂度**：开源参考实现刻意保持最小可用——单目标亮度均值 AE、GreyWorld AWB、纯反差 AF。商用 HAL 的 AE 通常叠加多区域智能测光（人脸/主体优先、场景分类）、AEB/HDR 曝光序列决策；AWB 是多白点证据融合 + 色温曲线先验（本章 Bayes 文件是其最小样本）；AF 是 CDAF+PDAF+OIS 三系统协同的调度问题。Android 只标准化接口语义（3.5 节），实现全部封装在 HAL 内——学习文档 2.1.1 的"HAL 实现负责控制 3A 算法"一句即此边界（A 层）。
+1. **算法复杂度**：开源参考实现刻意保持最小可用——单目标亮度均值 AE、GreyWorld AWB、纯反差 AF。商用 HAL 的 AE 通常叠加多区域智能测光（人脸/主体优先、场景分类）、AEB/HDR 曝光序列决策；AWB 是多白点证据融合 + 色温曲线先验（3.3.5 节的 Bayes 实现是其最小公开样本）；AF 是 CDAF+PDAF+OIS 三系统协同的调度问题。Android 只标准化接口语义（3.5 节），实现全部封装在 HAL 内——学习文档 2.1.1 的"HAL 实现负责控制 3A 算法"一句即此边界（A 层）。
 2. **统计与数据流**：厂商 ISP 的统计块远比公开的 rkisp1 丰富（多区直方图阵列、场景亮度/频闪检测、PD 数据链路），并通过 vendor tag 在 HAL 内私有流转（A 层机制，接口文档 5.5 节；2.3.5 节已总结"原始统计主要在 HAL 内部闭环"）。
 3. **tuning 体量**：libcamera 的 tuning 文件是"每个 sensor 一个 YAML、每算法几十个参数"的量级（第 2 章 2.6 节），厂商 tuning 是"数百参数 × 场景矩阵 × 模组个体差异"的产线工程，且常伴量产老化/温漂补偿——这部分没有公开样本，是开源与商用最实质的差距（B 层通行描述）。
 4. **AI 3A 趋势**：近年厂商把学习型模型引入 3A 与其邻接环节——语义分割驱动的分区测光/白平衡（如 Qualcomm 官方对 Snapdragon 8 Gen 2 "Cognitive ISP" 语义分割实时运行的宣传，B 层，厂商公开材料）、多帧计算摄影重塑 AE 策略（Google 的 HDR+ 以欠曝光短帧 + 后期融合替代单帧长曝光决策，Hasinoff et al., "Burst photography for high dynamic range and low-light imaging on mobile cameras", SIGGRAPH Asia 2016，B 层公开学术资料）。社区围绕移植这些闭源算法的生态（GCam ports）也反向证明：相机产品力的核心在 HAL 内的 3A/后处理算法而非接口（C 层，社区现象观察，出处：GCam 移植社区站 celsoazevedo.com，谨慎采信）。对学习者而言，本章这样的开源参考实现教会的是**反馈控制的结构与工程细节**（约束、滤波、量化、状态机）；至于旗运气质，仍然只能在厂商 tuning 与私有算法的黑盒之外体会（B 层收束）。
