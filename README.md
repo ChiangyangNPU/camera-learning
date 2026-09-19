@@ -1,5 +1,7 @@
 # camera-learning 📷
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 个人相机开发学习仓库，覆盖 **Android 与 iOS 两大平台的相机框架**：Android 部分以 AOSP 官方文档与源码为基（可逐行溯源），iOS 部分以 Apple 官方文档/WWDC 为基（全栈闭源，采用可信度分层标注）。
 
 ## 目录结构
@@ -68,6 +70,12 @@ iOS 系列文档特性：
 - AOSP 源码（main 分支）：[frameworks/av/services/camera/libcameraservice](https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/services/camera/libcameraservice/)、[hardware/interfaces/camera](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/main/camera/)、[camera3.h](https://android.googlesource.com/platform/hardware/libhardware/+/refs/heads/main/include_all/hardware/camera3.h)、[system/media/camera](https://android.googlesource.com/platform/system/media/+/refs/heads/main/camera/docs/)
 
 本文档为个人学习笔记，内容为对官方资料与开源代码的整理与转述，如有侵权或谬误请联系更正。
+
+## 许可证
+
+本仓库原创整理内容以 [MIT](LICENSE) 许可发布（Copyright © 2026 chiangyang）。
+
+其中衍生自 AOSP 官方文档的部分，依据上游许可 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 保留署名再分发（来源见上文"资料来源与致谢"）；Apple 官方文档/WWDC 材料的引用为学习性整理，版权归 Apple 所有。
 
 ## 更新日志
 
