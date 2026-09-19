@@ -1,6 +1,6 @@
 # camera-learning 📷
 
-个人相机开发学习仓库，目前以 **Android Camera 框架与接口**为主，后续计划补充 iOS 相机相关内容。
+个人相机开发学习仓库，覆盖 **Android 与 iOS 两大平台的相机框架**：Android 部分以 AOSP 官方文档与源码为基（可逐行溯源），iOS 部分以 Apple 官方文档/WWDC 为基（全栈闭源，采用可信度分层标注）。
 
 ## 目录结构
 
@@ -16,10 +16,16 @@ camera-learning/
 │   ├── src_docs/                     # 源码链路文档的分章源文件（ch1~ch4）
 │   ├── isp_docs/                     # ISP/3A 文档的分章源文件（ch1~ch4）
 │   └── images/                       # 文档配图（44 张，已本地化，可离线阅读）
-└── IOS/                              # iOS 相机学习（规划中）
+└── IOS/                              # iOS 相机学习资料
+    ├── iOS_Camera_学习文档.md         # ★ 主文档：AVFoundation 架构与机制（6 章）
+    ├── iOS_Camera_接口文档.md         # ★ 主文档：AVFoundation 接口速查 + 两平台对照（5 章）
+    ├── iOS_Camera_ISP_图像管线文档.md # ★ 主文档：Apple 计算摄影 + 应用侧处理栈 + 3A 映射（4 章）
+    ├── ios_camera_docs/              # 学习文档的分章源文件（chapter01~06）
+    ├── api_docs/                     # 接口文档的分章源文件（ch1~ch5）
+    └── pipeline_docs/                # 图像管线文档的分章源文件（ch1~ch4）
 ```
 
-## 四份主文档
+## Android 四份主文档
 
 | 文档 | 内容 | 适用场景 |
 |---|---|---|
@@ -38,10 +44,27 @@ camera-learning/
 
 ISP/3A 文档额外特性：厂商闭源内容（CAMX/mtkcam 内部）按 **A（可验证官方资料）/ B（公开通行知识）/ C（社区多源印证）** 三级可信度逐条标注，不可印证的细节一律不写；开源参考实现（libcamera 的 AE/AWB/AF、内核 rkisp1/CAMSS 驱动）均给出可复查的源码来源。
 
+## iOS 三份主文档
+
+| 文档 | 内容 | 适用场景 |
+|---|---|---|
+| [iOS_Camera_学习文档.md](IOS/iOS_Camera_学习文档.md) | iOS 相机软件栈分层（与 Android 三进程模型对照）、AVFoundation 会话—输入—输出模型、3A 接口面、拍照/录像管线、多摄与深度、版本演进（iOS 8→26），全程与 Android 系列对照 | 有 Android 背景系统学习 iOS 相机 |
+| [iOS_Camera_接口文档.md](IOS/iOS_Camera_接口文档.md) | Session/Device/Photo/Video/高级能力接口字段与方法速查，第 5 章为两平台 3A 元数据与流语义总对照表 + 迁移检查清单 | 写代码时查方法、跨平台迁移 |
+| [iOS_Camera_ISP_图像管线文档.md](IOS/iOS_Camera_ISP_图像管线文档.md) | Apple 传感器/ISP 公开口径与可观测边界、计算摄影体系（Smart HDR/Photonic Engine/ProRAW/Log）、应用侧处理栈（Core Image/Metal/VideoToolbox）、3A 控制面两平台完整映射 | 理解 Apple 成像行为、跨平台图像架构、3A 对齐 |
+
+建议阅读顺序：学习文档第 1 章（三个结构差异：没有 HAL、没有逐帧元数据、计算摄影默认在场）→ 第 2 章会话模型 → 第 3 章 3A 对照 → 接口文档第 5 章总对照表 → 图像管线文档按需深入。
+
+iOS 系列文档特性：
+
+- iOS 全栈闭源，**不设源码链路文档**；以 Apple 官方文档 / WWDC / AVCam 官方示例为 A 层来源，逐节附链接，延续 A/B/C 可信度分层；
+- 章节组织与 Android 系列同位对照（学习/接口/ISP 三份 ↔ Android 四份），每个 3A 与能力主题均给出 Android 元数据/接口的映射表；
+- 全部流程图/时序图为 Mermaid 语法；iOS 26（2025）与 WWDC26 的新 API（Cinematic 捕获、Capture Controls、ProRes RAW/Genlock、高分辨率拍照）已纳入版本演进与能力章节。
+
 ## 资料来源与致谢
 
 - [AOSP 官方文档 - 摄像头](https://source.android.google.cn/docs/core/camera?hl=zh-cn)（CC BY 4.0）
 - [Android API 参考](https://developer.android.google.cn/reference)（Camera2 / CameraX / Camera1 / NDK）
+- [Apple 开发者文档](https://developer.apple.com/documentation/avfoundation)（AVFoundation / CoreImage / VideoToolbox / DriverKit）、[WWDC 视频](https://developer.apple.com/videos/)、[AVCam 官方示例](https://developer.apple.com/documentation/avfoundation/capture_setup/avcam_building_a_camera_app)
 - AOSP 源码（main 分支）：[frameworks/av/services/camera/libcameraservice](https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/services/camera/libcameraservice/)、[hardware/interfaces/camera](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/main/camera/)、[camera3.h](https://android.googlesource.com/platform/hardware/libhardware/+/refs/heads/main/include_all/hardware/camera3.h)、[system/media/camera](https://android.googlesource.com/platform/system/media/+/refs/heads/main/camera/docs/)
 
 本文档为个人学习笔记，内容为对官方资料与开源代码的整理与转述，如有侵权或谬误请联系更正。
@@ -52,3 +75,4 @@ ISP/3A 文档额外特性：厂商闭源内容（CAMX/mtkcam 内部）按 **A（
 - 2026-09-06：新增《Android_Camera_源码链路文档》（framework/CameraService 源码链路 4 章，21 张 Mermaid 图，全部结论出自 AOSP main 分支源码并附行号）。
 - 2026-09-06：新增《Android_Camera_ISP_3A文档》（sensor/ISP 管线、3A 算法与平台 HAL 4 章，24 张 Mermaid 图；含 libcamera 开源算法分析、Qualcomm 官方文档引用，内容按 A/B/C 可信度分层标注）。
 - 2026-09-19：ISP/3A 文档第 3 章扩充：新增闪光灯 3A 与 precapture 时序（3.2.7）、AWB Bayes 色温估计算法逐函数分析（3.3.5）、多摄 3A 同步元数据与变焦切换（3.5.5）；全部分章源文件加入与主文档的同步声明。
+- 2026-09-19：新增 iOS 系列三份主文档（《iOS_Camera_学习文档》6 章、《iOS_Camera_接口文档》5 章、《iOS_Camera_ISP_图像管线文档》4 章）及对应分章源文件：以 Apple 官方文档/WWDC 为 A 层来源，延续 A/B/C 可信度分层，全程与 Android 系列对照（3A/元数据/能力映射表），不设源码链路文档（iOS 闭源）。
