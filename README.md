@@ -17,11 +17,11 @@ camera-learning/
 │   ├── isp_docs/                     # ISP/3A 文档的分章源文件（ch1~ch4）
 │   └── images/                       # 文档配图（44 张，已本地化，可离线阅读）
 └── IOS/                              # iOS 相机学习资料
-    ├── iOS_Camera_学习文档.md         # ★ 主文档：AVFoundation 架构与机制（6 章）
-    ├── iOS_Camera_接口文档.md         # ★ 主文档：AVFoundation 接口速查 + 两平台对照（5 章）
+    ├── iOS_Camera_学习文档.md         # ★ 主文档：AVFoundation 架构与机制（9 章）
+    ├── iOS_Camera_接口文档.md         # ★ 主文档：AVFoundation 接口速查 + PhotoKit/导出 + 两平台对照（6 章）
     ├── iOS_Camera_ISP_图像管线文档.md # ★ 主文档：Apple 计算摄影 + 应用侧处理栈 + 3A 映射（4 章）
-    ├── ios_camera_docs/              # 学习文档的分章源文件（chapter01~06）
-    ├── api_docs/                     # 接口文档的分章源文件（ch1~ch5）
+    ├── ios_camera_docs/              # 学习文档的分章源文件（chapter01~09）
+    ├── api_docs/                     # 接口文档的分章源文件（ch1~ch6）
     └── pipeline_docs/                # 图像管线文档的分章源文件（ch1~ch4）
 ```
 
@@ -48,11 +48,11 @@ ISP/3A 文档额外特性：厂商闭源内容（CAMX/mtkcam 内部）按 **A（
 
 | 文档 | 内容 | 适用场景 |
 |---|---|---|
-| [iOS_Camera_学习文档.md](IOS/iOS_Camera_学习文档.md) | iOS 相机软件栈分层（与 Android 三进程模型对照）、AVFoundation 会话—输入—输出模型、3A 接口面、拍照/录像管线、多摄与深度、版本演进（iOS 8→26），全程与 Android 系列对照 | 有 Android 背景系统学习 iOS 相机 |
-| [iOS_Camera_接口文档.md](IOS/iOS_Camera_接口文档.md) | Session/Device/Photo/Video/高级能力接口字段与方法速查，第 5 章为两平台 3A 元数据与流语义总对照表 + 迁移检查清单 | 写代码时查方法、跨平台迁移 |
+| [iOS_Camera_学习文档.md](IOS/iOS_Camera_学习文档.md) | iOS 相机软件栈分层（与 Android 三进程模型对照）、AVFoundation 会话—输入—输出模型、3A 接口面、拍照/录像管线、多摄与深度、版本演进（iOS 8→26），照片库与 HDR 交付（PhotoKit/Adaptive HDR）、音频会话、性能与导出，全程与 Android 系列对照 | 有 Android 背景系统学习 iOS 相机 |
+| [iOS_Camera_接口文档.md](IOS/iOS_Camera_接口文档.md) | Session/Device/Photo/Video/高级能力接口字段与方法速查，PhotoKit/音频会话/导出编辑接口，第 5 章为两平台 3A 元数据与流语义总对照表 + 迁移检查清单 | 写代码时查方法、跨平台迁移 |
 | [iOS_Camera_ISP_图像管线文档.md](IOS/iOS_Camera_ISP_图像管线文档.md) | Apple 传感器/ISP 公开口径与可观测边界、计算摄影体系（Smart HDR/Photonic Engine/ProRAW/Log）、应用侧处理栈（Core Image/Metal/VideoToolbox）、3A 控制面两平台完整映射 | 理解 Apple 成像行为、跨平台图像架构、3A 对齐 |
 
-建议阅读顺序：学习文档第 1 章（三个结构差异：没有 HAL、没有逐帧元数据、计算摄影默认在场）→ 第 2 章会话模型 → 第 3 章 3A 对照 → 接口文档第 5 章总对照表 → 图像管线文档按需深入。
+建议阅读顺序：学习文档第 1 章（三个结构差异：没有 HAL、没有逐帧元数据、计算摄影默认在场）→ 第 2 章会话模型 → 第 3 章 3A 对照 → 第 4 章拍照/录像管线 → 第 7/8 章照片库与音频闭环 → 接口文档第 5 章总对照表 → 图像管线文档按需深入。
 
 iOS 系列文档特性：
 
@@ -76,3 +76,4 @@ iOS 系列文档特性：
 - 2026-09-06：新增《Android_Camera_ISP_3A文档》（sensor/ISP 管线、3A 算法与平台 HAL 4 章，24 张 Mermaid 图；含 libcamera 开源算法分析、Qualcomm 官方文档引用，内容按 A/B/C 可信度分层标注）。
 - 2026-09-19：ISP/3A 文档第 3 章扩充：新增闪光灯 3A 与 precapture 时序（3.2.7）、AWB Bayes 色温估计算法逐函数分析（3.3.5）、多摄 3A 同步元数据与变焦切换（3.5.5）；全部分章源文件加入与主文档的同步声明。
 - 2026-09-19：新增 iOS 系列三份主文档（《iOS_Camera_学习文档》6 章、《iOS_Camera_接口文档》5 章、《iOS_Camera_ISP_图像管线文档》4 章）及对应分章源文件：以 Apple 官方文档/WWDC 为 A 层来源，延续 A/B/C 可信度分层，全程与 Android 系列对照（3A/元数据/能力映射表），不设源码链路文档（iOS 闭源）。
+- 2026-09-19：iOS 系列补全闭环：学习文档扩至 9 章（新增第 7 章照片库与 HDR 交付/PhotoKit/Adaptive HDR Gain Map、第 8 章音频会话 AVAudioSession、第 9 章性能/导出/空间视频；第 1 章增补"无 CameraX 等价物"定位、第 5 章扩充 Continuity Camera）；接口文档扩至 6 章（新增第 6 章 PhotoKit/音频/导出接口速查）。

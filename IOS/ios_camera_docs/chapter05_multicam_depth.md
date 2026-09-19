@@ -85,6 +85,18 @@ iOS 17 起支持外接 USB 摄像头（iPadOS 全量、iPhone 随 Pro 机型推�
 - Continuity Camera（iPhone 当 Mac 摄像头）在 iOS 16 引入 `continuityCamera` 类型，iOS 17 合并入 `.external`；
 - 热插拔通知：`AVCaptureDevice.wasConnectedNotification / wasDisconnectedNotification`（对应 Android USB device attach/detach）。
 
+**Continuity Camera 与形态差异**（A 层，官方支持文档与 WWDC 材料归纳）：
+
+| 形态 | 说明 | 开发者注意点 |
+|---|---|---|
+| Continuity Camera（iPhone→Mac/iPad） | iPhone 作为无线摄像头（iOS 16 引入类型，17 并入 `.external`） | 带来的能力随 iPhone 硬件（如 Studio Light、Desk View 由系统端实现） |
+| Desk View | 俯视桌面的双路视图（顶部摄像头看人 + 超广角看桌面） | 系统端合成；第三方是否单独拿到桌面流随版本演进，以官方文档为准 |
+| USB UVC（iPadOS 17+） | 标准 UVC 协议直连 | 格式/控制能力受设备 UVC 描述符限制：`formats` 列表可能远窄于内置摄像头，手动曝光等控制面要逐项查 `isXxxSupported` |
+
+与 Android 的对照结论：Android 外接相机走 `ExternalCameraProvider`，能力同样受 UVC 限制且公开文档明确；iOS 侧的差异是 Continuity Camera 这种**跨设备无线形态**没有 Android 等价物（Apple 生态独有），且同一套 `.external` API 覆盖有线/无线两种来源。
+
+**macOS 对照**：macOS 上除 UVC/Camera Extensions（第 6 章）外，同一套 AVFoundation 捕获 API 跨平台复用，但设备枚举（CMIO 层）、显示器色彩管理路径不同；跨平台相机 App（如会议类）通常将"会话与输出"层共享、设备选择与权限 UI 分平台实现。
+
 macOS 上更进一步的 **Camera Extensions**（第三方可用 DriverKit 实现系统级摄像头）见第 6 章。
 
 ## 5.6 功能矩阵总表：iOS vs Android

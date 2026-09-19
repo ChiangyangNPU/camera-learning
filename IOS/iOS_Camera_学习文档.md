@@ -13,12 +13,15 @@ iOS 全栈闭源：没有 AOSP 源码可逐行核对、没有 HAL 边界可考�
 
 | 章节 | 内容 | 对应 Android 系列 |
 |---|---|---|
-| 第 1 章 架构概览与版本演进 | iOS 相机软件栈分层（与 Android 三进程模型对照）、版本时间线（iOS 8→26）、API 体系总览与对照阅读地图 | 学习文档第 1、4 章 |
+| 第 1 章 架构概览与版本演进 | iOS 相机软件栈分层（与 Android 三进程模型对照）、版本时间线（iOS 8→26）、API 体系总览、高层封装生态（无 CameraX 等价物）与对照阅读地图 | 学习文档第 1、4 章 |
 | 第 2 章 AVFoundation 捕获核心 | 会话—输入—输出模型、配置原子性、设备发现、中断恢复、权限隐私 | 学习文档第 1~2 章 |
 | 第 3 章 设备控制：3A 接口面 | 对焦/曝光/白平衡的模式与锁定、闪光灯、变焦、系统压力（对照 Android CONTROL_* 元数据） | 学习文档第 2 章 + ISP/3A 文档第 3 章接口部分 |
 | 第 4 章 拍照与录像管线 | Photo settings 对象模型、格式体系（HEIC/DNG/ProRAW）、高分辨率与延迟处理、视频双路线、ProRes/Log/Cinematic | 学习文档第 2、5~7 章 |
-| 第 5 章 多摄、深度与硬件特性 | 虚拟设备、MultiCamSession、AVDepthData 三源、微距/Center Stage/Capture Controls、外接摄像头 | 学习文档第 5~7 章 |
+| 第 5 章 多摄、深度与硬件特性 | 虚拟设备、MultiCamSession、AVDepthData 三源、微距/Center Stage/Capture Controls、外接摄像头与 Continuity Camera | 学习文档第 5~7 章 |
 | 第 6 章 生态、扩展与合规 | 为什么没有第三方相机 HAL、ScreenCaptureKit、系统相机边界、测试与合规 | 学习文档第 1 章 + 版本控制章 |
+| 第 7 章 照片库与 HDR 交付闭环 | PhotoKit 对象模型、保存/读取、addOnly/limited 授权、PHPicker、Adaptive HDR / Gain Map（对照 Android Ultra HDR） | 学习文档第 5 章（Ultra HDR）+ MediaStore 体系 |
+| 第 8 章 音频会话与录制闭环 | AVAudioSession 类别/模式/路由/中断，与相机会话协作检查清单 | AudioFocus / AudioRecord 体系对照 |
+| 第 9 章 性能、导出与新形态交付 | sample buffer 生命周期、热降级矩阵、后台边界、ExportSession/Composition/缩略图、空间视频与 Immersive Media | 学习文档第 3 章（性能）+ 编辑生态 |
 
 ## 建议学习路径
 
@@ -26,7 +29,8 @@ iOS 全栈闭源：没有 AOSP 源码可逐行核对、没有 HAL 边界可考�
 2. **掌握会话模型**：第 2 章的对象图是全部 iOS 相机代码的骨架，对照 Android 的 session/stream 记忆成本最低；
 3. **3A 对照着学**：第 3 章每节都有 Android 元数据对照表，用已知的 CONTROL_* 体系映射；
 4. **管线按需深入**：第 4 章拍照/录像两条路线，写代码前精读；第 5~6 章按需选读；
-5. **横向配合**：《iOS_Camera_接口文档》速查方法签名，《iOS_Camera_ISP_图像管线文档》解释行为背后的图像处理。
+5. **补齐闭环**：第 7 章照片库与 HDR 交付、第 8 章音频会话是拍照/录像 App 落地的必经路径；第 9 章性能与导出按需；
+6. **横向配合**：《iOS_Camera_接口文档》速查方法签名，《iOS_Camera_ISP_图像管线文档》解释行为背后的图像处理。
 
 ---
 
@@ -163,7 +167,24 @@ flowchart LR
 
 > 与 Android 的顺序差异：Android 是 openCamera → createCaptureSession → setRepeatingRequest（显式开启重复流）；iOS 没有"请求"概念，`startRunning()` 之后预览与各输出即持续供流，拍照是对 photo output 的**单次动作**而非流状态切换。
 
-## 1.4 与 Android 学习文档的对照阅读地图
+## 1.4 高层封装生态：iOS 没有 CameraX 等价物
+
+> 来源（A 层）：[AVCam: Building a camera app](https://developer.apple.com/documentation/avfoundation/capture_setup/avcam_building_a_camera_app)（官方示例含 SwiftUI 变体）、SwiftUI 与 AVFoundation 文档可用性标注。
+
+Android 用 CameraX 解决了"生命周期绑定、设备兼容、用例抽象"三大痛点；**iOS 官方没有对应物**——AVFoundation 本身就是唯一官方路线，Apple 用别的方式回应同样的问题：
+
+| CameraX 解决的问题 | iOS 的官方回应 |
+|---|---|
+| 生命周期感知（LifecylceOwner 绑定） | 系统中断通知 + AppDelegate 生命周期（第 2 章 2.4），无声明式绑定 |
+| 兼容性抽象（CameraXConfig） | 不需要：硬件行为跨机型一致（垂直整合） |
+| 用例抽象（Preview/ImageCapture/VideoCapture） | 输出对象体系本身就是用例（Photo/MovieFile/VideoDataOutput） |
+| CameraController（Kotlin 便捷层） | 无官方等价物；SwiftUI **没有官方相机捕获组件** |
+
+SwiftUI 集成现状（A 层事实）：官方示例 AVCam 提供 SwiftUI 实现变体，但结构仍是 `UIViewControllerRepresentable` 包装 UIKit 相机视图控制器；预览可单独用 `AVCaptureVideoPreviewLayer` 包进 `UIViewRepresentable`。截至 iOS 26，SwiftUI 没有官方的会话/输出组件，社区封装库是"易用层"的事实角色（自建或选库，注意其维护度与 AVFoundation 新特性跟进速度）。
+
+工程含义：Android 上"CameraX vs Camera2"的选型讨论在 iOS 不存在——直接学 AVFoundation 本体，本文档系列即按此定位撰写。
+
+## 1.5 与 Android 学习文档的对照阅读地图
 
 本仓库 Android 系列共四份文档，iOS 系列对应关系与差异说明：
 
@@ -617,6 +638,18 @@ iOS 17 起支持外接 USB 摄像头（iPadOS 全量、iPhone 随 Pro 机型推�
 - Continuity Camera（iPhone 当 Mac 摄像头）在 iOS 16 引入 `continuityCamera` 类型，iOS 17 合并入 `.external`；
 - 热插拔通知：`AVCaptureDevice.wasConnectedNotification / wasDisconnectedNotification`（对应 Android USB device attach/detach）。
 
+**Continuity Camera 与形态差异**（A 层，官方支持文档与 WWDC 材料归纳）：
+
+| 形态 | 说明 | 开发者注意点 |
+|---|---|---|
+| Continuity Camera（iPhone→Mac/iPad） | iPhone 作为无线摄像头（iOS 16 引入类型，17 并入 `.external`） | 带来的能力随 iPhone 硬件（如 Studio Light、Desk View 由系统端实现） |
+| Desk View | 俯视桌面的双路视图（顶部摄像头看人 + 超广角看桌面） | 系统端合成；第三方是否单独拿到桌面流随版本演进，以官方文档为准 |
+| USB UVC（iPadOS 17+） | 标准 UVC 协议直连 | 格式/控制能力受设备 UVC 描述符限制：`formats` 列表可能远窄于内置摄像头，手动曝光等控制面要逐项查 `isXxxSupported` |
+
+与 Android 的对照结论：Android 外接相机走 `ExternalCameraProvider`，能力同样受 UVC 限制且公开文档明确；iOS 侧的差异是 Continuity Camera 这种**跨设备无线形态**没有 Android 等价物（Apple 生态独有），且同一套 `.external` API 覆盖有线/无线两种来源。
+
+**macOS 对照**：macOS 上除 UVC/Camera Extensions（第 6 章）外，同一套 AVFoundation 捕获 API 跨平台复用，但设备枚举（CMIO 层）、显示器色彩管理路径不同；跨平台相机 App（如会议类）通常将"会话与输出"层共享、设备选择与权限 UI 分平台实现。
+
 macOS 上更进一步的 **Camera Extensions**（第三方可用 DriverKit 实现系统级摄像头）见第 6 章。
 
 ## 5.6 功能矩阵总表：iOS vs Android
@@ -704,3 +737,247 @@ flowchart LR
 ```
 
 到此，机制层结束。写代码查 API 见《iOS_Camera_接口文档》；理解"Apple 的照片为什么长这样"见《iOS_Camera_ISP_图像管线文档》。
+# 第 7 章 照片库与 HDR 交付闭环（PhotoKit / Adaptive HDR）
+
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
+> 本章补齐"拍照之后"的半条链路：照片存进哪里、怎么读回来、隐私授权怎么管，以及 HDR 照片（Adaptive HDR / Gain Map）的交付形态。对应 Android 的 MediaStore/MediaProvider 与 Ultra HDR 专题。出处：[PhotoKit](https://developer.apple.com/documentation/photokit)、[PHPickerViewController](https://developer.apple.com/documentation/photokit/phpickerviewcontroller)、WWDC24 HDR 图像 session（见 7.5）。
+
+## 7.1 PhotoKit 对象模型
+
+> 出处：[PHAsset](https://developer.apple.com/documentation/photokit/phasset)、[PHAssetCollection](https://developer.apple.com/documentation/photokit/phassetcollection)。
+
+| 概念 | PhotoKit | Android 对应 |
+|---|---|---|
+| 媒体条目 | `PHAsset`（photo/video/live photo 统一） | MediaStore 的 Images/Video 表行 |
+| 容器 | `PHAssetCollection`（相册/时刻）+ `PHFetchResult` 惰性集合 | MediaStore bucket/album |
+| 查询 | `PHFetchOptions`（谓词+排序） | MediaStore query |
+| 内容读取 | `PHImageManager` / `PHAssetResource`（原始文件级访问） | ContentResolver.openInputStream |
+| 变更观察 | `PHPhotoLibraryChangeObserver`（细粒度增量变更） | ContentObserver |
+
+与 MediaStore 最大的体感差异：PhotoKit 是**授权后全库统一访问**（授权即读全库或受限子集），Android 13+ 的 Photo Picker 与部分授权模式在 iOS 的对应物是 PHPicker 与 limited library（7.3/7.4）。
+
+## 7.2 保存与读取闭环
+
+> 出处：[Saving created or edited assets](https://developer.apple.com/documentation/photokit/saving_created_or_edited_assets)。
+
+保存（异步事务 + 变更请求）：
+
+```swift
+PHPhotoLibrary.shared().performChanges {
+    let request = PHAssetCreationRequest.forAsset()
+    request.addResource(with: .photo, data: imageData, options: nil)
+    // 视频: .video(data/fileURL)；Live Photo: .pairedImage + .pairedVideo 成对
+} completionHandler: { success, error in /* ... */ }
+```
+
+要点：
+
+- `PHAssetCreationRequest` 支持直接写入**原始文件**（HEIC/DNG/MOV）并附位置、拍摄时间等元数据（`creationRequest?.location = CLLocation(...)`）——RAW/ProRAW App 的标准入库路径，等价 Android 上 MediaStore 的 RELATIVE_PATH + IS_PENDING 流程但更直接；
+- 读取原始数据用 `PHAssetResource`（比 `PHImageManager` 更底层，能拿到入库时的原文件与配对资源），iCloud 未下载的资产需允许网络（`PHAssetResourceManagerRequestOptions.isNetworkAccessAllowed`）；
+- 显示级读取用 `PHImageManager.requestImage/DataAndOrientation`，处理 iCloud 按需下载（networkAccessAllowed + progress handler）。
+
+## 7.3 权限：addOnly / readWrite / limited
+
+> 出处：[Requesting authorization to access photos](https://developer.apple.com/documentation/photokit/requesting_authorization_to_access_photos)。
+
+| 授权级别 | 场景 | Android 对应 |
+|---|---|---|
+| `.addOnly` | 只写不读（相机直存类 App） | READ/WRITE_EXTERNAL_STORAGE 分离的写入侧 |
+| `.readWrite` | 全功能 | READ_MEDIA_IMAGES/VIDEO |
+| limited（受限选择） | 用户只授权部分照片 | Android 14+ 的部分授权/Photo Picker 选中集 |
+
+iOS 14 起的 limited 模式是**系统级 UI**：用户在授权弹窗选"选择照片…"后，App 只能访问选中集；App 应监听 `PHPhotoLibrary` 的授权变更并引导用户调整（系统会在状态栏给持续提示）。Info.plist 需 `NSPhotoLibraryUsageDescription`（读）与 `NSPhotoLibraryAddUsageDescription`（仅添加，addOnly 路径用）。
+
+与相机 App 的组合：拍照 → 只存不读的 App 用 `.addOnly`（体验最轻）；要相册内选图再编辑的 App，优先考虑 PHPicker 而不是申请读权限。
+
+## 7.4 PHPickerViewController：无需授权的选择器
+
+> 出处：[PHPickerViewController](https://developer.apple.com/documentation/photokit/phpickerviewcontroller)。
+
+系统托管的全库选择器（iOS 14+），**App 不获得任何照片库权限**，只拿到用户勾选的条目（`NSItemProvider` 形式交付，可请求 image/data 表示）：
+
+- 配置：`PHPickerConfiguration(photoLibrary: nil)` + `selectionLimit`（1 为单选，0 为多选）+ `filter`（.images/.videos/.livePhotos）；
+- 交付：delegate `picker(_:didFinishPicking:)` → `NSItemProvider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier)`；
+- 优势：零权限 + 系统级多选/搜索体验；局限：拿不到 PHAsset 引用（无法做"全库浏览/同步"类功能）——与 Android Photo Picker 的定位完全同构。
+
+## 7.5 HDR 照片体系：Adaptive HDR 与 Gain Map
+
+> 出处：WWDC24 [Use HDR for dynamic image experiences in your app](https://developer.apple.com/videos/play/wwdc2024/10603)、ImageIO/CGImageDestination 的 gain map 支持（文档站 HDR 图像交付主题）。
+
+iPhone 15 起，系统相机默认输出 **HDR 照片**；iOS 18 将其官方化为 **Adaptive HDR** 概念，并给第三方完整的读写 API。理解三个层：
+
+1. **载体**：单文件 HEIC/JPEG 内嵌 **Gain Map**（增益图）——主图是 SDR 显示域，增益图记录 HDR 亮度比，HDR 显示器上按增益图重建高亮；**不是** Android Ultra HDR 的 JPEG_R 双文件思路，但语义同构（Apple 官方在 WWDC 中亦说明其格式遵循 ISO 21496-1 gain map 标准）；
+2. **Adaptive HDR**：同一文件同时携带 SDR + HDR 表示，随显示能力自适应——SDR 屏、HDR 屏、分享到不支持的平台都各自取合适版本；
+3. **管线入口**：捕获侧（`AVCapturePhotoOutput` 的 HDR 交付随版本开放，具体能力查询以官方文档为准）、写入侧（`CGImageDestination` 支持 gain map 属性）、读取侧（ImageIO 解码出主图 + gain map）、显示侧（UIKit/NSImage 自动按显示器能力渲染 HDR）。
+
+与 Android 的对照（对齐 Android 系列的 Ultra HDR 专题）：
+
+| | iOS（Adaptive HDR） | Android（Ultra HDR / JPEG_R） |
+|---|---|---|
+| 载体 | HEIC/JPEG + ISO 21496-1 gain map（单文件） | JPEG_R（JPEG + XMP `#gainmap`） |
+| 系统相机默认 | iPhone 15 起默认 HDR 照片 | 逐 OEM 推进 |
+| 第三方读写 | ImageIO/CGImageDestination 官方 API（iOS 18 完整化） | Gainmap 相关 API（API 34+，OEM 支持度分化） |
+| 显示自适应 | 系统级（SDR/HDR 自动） | 系统级 |
+
+工程要点：自研拍照 App 想输出 HDR 照片，iOS 18+ 的推荐路径是 **gain map 交付 + Adaptive HDR**（而非全 HDR-HEIC，兼容性差）；编辑 App 注意——**裁剪/滤镜若走普通解码重编码会丢 gain map**，需用 ImageIO 的 gain map 感知 API 全链路透传，这与 Android 上 Ultra HDR 图被误处理的坑完全同型。
+
+## 7.6 本章小结
+
+拍照 App 的完整闭环 = 捕获（第 4 章）→ 处理（图像管线文档第 3 章）→ **交付与库（本章）**。iOS 的闭环特点是：授权模型细（addOnly/limited）、选择器零权限化（PHPicker）、HDR 交付官方化（Adaptive HDR gain map）——三条都比 Android 的对应机制更早、更系统化。
+# 第 8 章 音频会话与录制闭环（AVAudioSession）
+
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
+> 录视频的音画问题（没声音、声音从听筒出、来电后录不上）九成出在 AVAudioSession 配置。本章讲清音频会话与相机会话的协作，对应 Android 的 AudioRecord/AudioFocus/AudioManager 体系。出处：[AVAudioSession](https://developer.apple.com/documentation/avfaudio/avaudiosession)（AVFAudio 框架）。
+
+## 8.1 定位：单例策略对象，而非捕获组件
+
+`AVAudioSession` 是**进程级单例的策略对象**：它声明"本 App 要怎么用音频硬件"（类别、模式、路由偏好），系统据此仲裁多 App 音频（电话优先级最高）。相机 App 里它与 AVCaptureSession 平行存在——AVCaptureSession 管采集，AVAudioSession 管"硬件怎么配给采集"：
+
+| Android 概念 | iOS 对应 |
+|---|---|
+| AudioManager.setMode/setSpeakerphoneOn | category + mode + overrideOutputAudioPort |
+| 音频焦点（AudioFocusRequest） | 系统自动仲裁 + interruption 通知（无主动请求 API） |
+| AudioRecord 采样配置 | category/mode 决定输入路径（采集参数在 AVCaptureDeviceInput/AudioDataOutput） |
+| ACTION_HEADSET_PLUG / AudioDeviceCallback | routeChangeNotification |
+
+## 8.2 类别与模式：相机 App 的标准配置
+
+> 出处：[Audio categories 文档](https://developer.apple.com/documentation/avfaudio/avaudiosession/category)（各类别行为矩阵）。
+
+录视频（MovieFileOutput/VideoDataOutput + 音频 input）的标准配置：
+
+```swift
+let session = AVAudioSession.sharedInstance()
+try session.setCategory(.playAndRecord, mode: .videoRecording,
+                        options: [.defaultToSpeaker, .allowBluetooth])
+try session.setActive(true)
+```
+
+| 配置项 | 取值 | 说明 |
+|---|---|---|
+| category | `.playAndRecord` | 边录边播（回显/特效监听）；纯录音 `.record`；纯播放 `.playback` |
+| mode | `.videoRecording` | 针对视频录制的信号处理（对应 Android setMode(MODE_IN_COMMUNICATION) 邻近语义） |
+| `.defaultToSpeaker` | option | 扬声器出声（否则录音时输出走听筒——经典坑） |
+| `.allowBluetooth` / `.allowBluetoothA2DP` | option | 蓝牙麦克风（HFP）/仅蓝牙音箱 |
+| `.mixWithOthers` | option | 不打断其他 App 音频（社交类 App 常用；会让音频仲裁变弱） |
+
+要点：
+
+- **`setActive(true)` 是声明开始使用**，对应焦点获得；`setActive(false, with: .notifyOthersOnDeactivation)` 归还——与 Android 显式 requestAudioFocus/abandon 相比，iOS 的仲裁更"隐形"但同样存在（电话来电必然打断你）；
+- 配置**越早越好**：在搭相机会话之前配好音频会话，避免先建 session 再改路由导致的重路由噪声（蓝牙切换的"咔哒"声会被录进音轨）；
+- 类别/模式只能在**非激活**状态下改的部分属性有限制，改配置的完整模式是 setCategory → setMode → setActive。
+
+## 8.3 路由：外设切换与监听
+
+> 出处：[AVAudioSession.routeChangeNotification](https://developer.apple.com/documentation/avfaudio/avaudiosession/routechangenotification)、`currentRoute` 文档。
+
+- `currentRoute`：当前输入/输出设备（`AVAudioSessionPortDescription`：builtInMic/bluetoothHFP/headphones 等）；
+- **routeChangeNotification**：插拔耳机、连接 AirPods、蓝牙断连时触发（userInfo 含 oldDeviceUnavailable 与旧设备描述）——蓝牙耳机断连瞬间录音会自动落到内置麦克风，录制 App 应在此暂停或提示（对应 Android AudioDeviceCallback + 蓝牙 SCO 掉线的同款坑）；
+- 输入优先级：有线耳机麦 > 蓝牙 HFP > 内置麦（连接即切换）；要强制内置麦需 option `.interruptionSpokenAudioAndMixWithOthers`? 不对——用 `overrideOutputAudioPort` 管输出侧，输入侧没有逐端口选择 API（macOS 才有完整选择），这是 iOS 音频路由的常见误解点。
+
+## 8.4 中断：电话、Siri 与其他 App
+
+> 出处：[Handling audio interruptions](https://developer.apple.com/documentation/avfaudio/handling_audio_interruptions)。
+
+```mermaid
+sequenceDiagram
+    participant S as 系统
+    participant App as 你的录制 App
+    S->>App: interruptionNotification (began)
+    App->>App: 停止录制/保存状态/关闭文件
+    S->>App: interruptionNotification (ended)
+    App->>App: 检查 options.shouldResume → setActive(true) → 恢复
+```
+
+与相机中断（学习文档 2.4）是**两套独立通知**：来电会同时打断音频与相机（两个通知都到），但"其他 App 播音乐"只影响音频会话（相机会话不中断）。恢复逻辑要分开处理，录制中来电的文件保全靠 MovieFileOutput 的 delegate error 回调 + AVAudioSession 中断处理共同完成。
+
+## 8.5 与相机会话协作的检查清单
+
+1. 录制前：音频会话配置（category/mode/options）→ setActive(true) → 搭/启动 AVCaptureSession；
+2. 录制中：监听 routeChange（外设切换降级）+ interruption（来电暂停）+ systemPressureState（热降级，学习文档 3.6）；
+3. 录制后：setActive(false, notifyOthersOnDeactivation) 归还硬件；
+4. 回显监听（耳机里听实时画面音）：category .playAndRecord + 耳机路由，**扬声器路径禁止监听**（啸叫）；
+5. 多会话 App（聊天+相机）：全局只配一次音频会话，不要每个页面重复 setCategory 抢改。
+
+> 与 Android 的总对照：iOS 的 AVAudioSession 把 Android 散在 AudioManager/AudioFocus/AudioRecord 三处的职责合并成单例策略对象，仲裁由系统代劳但通知不可省——"焦点思维"从主动请求变成被动响应，迁移时最容易漏的就是 interruption/routeChange 两条通知链。
+# 第 9 章 性能、导出与新形态交付
+
+> 本文为分章源文件，供单章阅读；若与主文档不一致，以主文档最新版为准。
+
+> 对应 Android 系列的学习文档第 3 章（性能优化）与编辑导出生态。出处：[AVAssetExportSession](https://developer.apple.com/documentation/avfoundation/avassetexportsession)、[AVComposition](https://developer.apple.com/documentation/avfoundation/avcomposition)、[AVAssetImageGenerator](https://developer.apple.com/documentation/avfoundation/avassetimagegenerator)、[Immersive Media Support](https://developer.apple.com/documentation/immersivemediasupport)（WWDC25 Session 403）。
+
+## 9.1 帧管线性能：sample buffer 生命周期
+
+> 出处：AVCaptureVideoDataOutput 文档对 delegate 生命周期的明确说明（A 层）。
+
+逐帧管线的第一条铁律：**sample buffer 不得在回调作用域之外长期持有**。相机到输出的缓冲池是有限环（隐式管理），App 持住 buffer 不还，供流会停摆（帧不再到达，等价 Android 忘调 `Image.close()` 后 ImageReader 卡死，但 iOS 是隐式环、没有显式 close 调用，坑更隐蔽）。需要异步处理时：
+
+- 拷贝需要的部分（`CIImage(cvPixelBuffer:)` 引用同一 IOSurface 但轻量；真正延迟处理用 `CVPixelBuffer` 的 retain 语义受 Core Image/CVBuffer 管理规则约束）——最稳妥的做法是**在回调内完成重活或复制到自有 buffer**；
+- `alwaysDiscardsLateVideoFrames = true`（实时优先）时丢帧发生在输出侧，App 感知不到（无逐帧丢弃回调，与 Android 丢帧策略 API 相比不可观测）；
+- delegate 队列必须**串行**，重活分流到其他队列，避免回调堆积触发系统丢帧。
+
+性能预算参考（B 层通行经验）：预览走 `AVCaptureVideoPreviewLayer`（系统直渲零成本）；手动渲染（Metal/Core Image）才有逐帧预算——1080p30 的全链 GPU 处理要控制在一帧 33ms 内，4K 下先考虑降采样处理再回填。
+
+## 9.2 热管理：压力驱动的降级矩阵
+
+> 出处：[AVCaptureDevice.systemPressureState](https://developer.apple.com/documentation/avfoundation/avcapturedevice/systempressurestate)（学习文档 3.6 已介绍机制）。
+
+长录/直播 App 的降级矩阵应挂在 `systemPressureState` 的 KVO 上（A 层定义了 level 与 factors；具体降级策略是工程决策）：
+
+| 压力级别 | 建议动作 |
+|---|---|
+| nominal / fair | 全量运行（4K + ProRes + 实时滤镜） |
+| serious | 关实时滤镜/降帧率/关监听；ProRes 降码率或转 HEVC |
+| critical | 停止高负载输出，仅保预览；提示用户 |
+
+与 Android 差异：Android 的热信号散在 OEM 私有 API 与系统广播（各机型行为不一），iOS 提供统一相机专用压力源——**降级策略可以做成跨机型一致的工程资产**。
+
+## 9.3 后台与续录
+
+> 出处：[UIKit 后台执行文档](https://developer.apple.com/documentation/uikit/app_and_environment/scenes_preparing_your_ui_to_run_in_the_background/extending_your_app_s_background_execution_time)。
+
+- 进入后台：相机会话收到中断（2.4），预览冻结；**视频录制**可借 `beginBackgroundTask`（约 30 秒级余量）完成收尾落盘，**不能**无限后台录制（对应 Android 前台服务录制的差异——Android 可合法后台长录，iOS 没有等价能力）；
+- "后台长录"的合法近似：保持会话在前台 + `AVCaptureSession` 与 UI 分离（锁屏前系统可能仍然中断，需实测各 iOS 版本行为，C 层经验：锁屏中断率随版本变化，不能作为产品依赖）；
+- PIP（画中画）视频播放不受此限——播放与捕获的后台待遇不同，这是 iOS 多媒体的固定规则。
+
+## 9.4 导出与编辑：Asset 体系
+
+> 出处：[AVAssetExportSession](https://developer.apple.com/documentation/avfoundation/avassetexportsession)、[AVMutableComposition](https://developer.apple.com/documentation/avfoundation/avmutablecomposition)、[AVAssetImageGenerator](https://developer.apple.com/documentation/avfoundation/avassetimagegenerator)。
+
+拍照 App 的"后期车间"三件套（对应 Android 的 Transformer/Media3 编辑器体系）：
+
+| 组件 | 用途 | Android 对应 |
+|---|---|---|
+| `AVAssetExportSession` | 转码/压缩/格式转换（preset 驱动） | Media3 Transformer |
+| `AVMutableComposition` + `AVVideoComposition` | 多轨拼接、时间线编辑、转场与自定义合成器 | Transformer 的序列编辑/Effect |
+| `AVAssetImageGenerator` | 指定时间点出帧（封面/缩略图） | MediaMetadataRetriever |
+
+要点：
+
+- ExportSession 的 preset 是**声明式质量选择**（`.presetHighestQuality`、`.presetHEVCHighestQuality`、`.passthrough` 不重编码直拷容器）；精确控制码率/分辨率走 `AVAssetReader + AVAssetWriter` 自管线（等价 Android 的 MediaExtractor→Codec→Muxer 链）；
+- `AVComposition` 编辑的是**时间线引用**（不复制数据，渲染时按引用合成）——导出时才落盘成品；ProRes 素材编辑注意重编码成本（`.passthrough` 不支持跨参数拼接时必须全重编）；
+- 视频元数据（位置、拍摄时间、方向）写入经 `AVAssetWriter` 的 `metadata` 或导出时的 `metadataItemFilter`——对应 Android MediaMuxer 无元数据接口的痛点，iOS 这层是完整的；
+- HDR 视频（HLG/Dolby Vision）导出保持色彩属性一致（preset 选择 HDR 支持项），SDR 化导出是显式选择而非默认。
+
+## 9.5 新形态交付：空间视频与 Immersive Media
+
+> 出处：[WWDC25 Session 403: Learn about Apple Immersive Video technologies](https://developer.apple.com/videos/play/wwdc2025/403)、[Immersive Media Support framework](https://developer.apple.com/documentation/immersivemediasupport)。
+
+- **空间视频**（iPhone 15 Pro 起，双镜头立体 MV-HEVC）：系统相机录制；读取/回放侧经 AVFoundation/ImageIO 对 MV-HEVC 的支持对第三方开放，捕获端第三方 API 随版本渐进开放（以官方文档为准）；
+- **Apple Immersive Video**：visionOS 生态的制作格式（含空间音频、宽视场沉浸式内容），WWDC25 引入 Immersive Media Support framework 与 AVFoundation 的新读写 API，面向内容制作工具链；
+- 与 Android 对照：立体/沉浸视频在 Android 无系统级格式与管线支持（OEM 各自为政），Apple 把"拍摄设备 → 格式 → 回放设备"垂直打通——这是继 ProRAW/Log 之后又一例"系统能力 API 化"路线，值得跟踪其开放节奏。
+
+## 9.6 本章小结
+
+```mermaid
+flowchart LR
+    A["捕获（ch2~4）"] --> B["处理（管线文档 ch3）"]
+    B --> C["库与交付（ch7）"]
+    C --> D["编辑导出（ch9.4）"]
+    A --> E["性能与热（ch9.1~3）<br/>横切所有环节"]
+    style E fill:#fff4e5
+```
+
+性能与热管理是横切关注点：sample buffer 生命周期、压力降级、后台边界三条规则先于功能设计确定，返工成本最低。

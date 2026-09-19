@@ -131,7 +131,24 @@ flowchart LR
 
 > 与 Android 的顺序差异：Android 是 openCamera → createCaptureSession → setRepeatingRequest（显式开启重复流）；iOS 没有"请求"概念，`startRunning()` 之后预览与各输出即持续供流，拍照是对 photo output 的**单次动作**而非流状态切换。
 
-## 1.4 与 Android 学习文档的对照阅读地图
+## 1.4 高层封装生态：iOS 没有 CameraX 等价物
+
+> 来源（A 层）：[AVCam: Building a camera app](https://developer.apple.com/documentation/avfoundation/capture_setup/avcam_building_a_camera_app)（官方示例含 SwiftUI 变体）、SwiftUI 与 AVFoundation 文档可用性标注。
+
+Android 用 CameraX 解决了"生命周期绑定、设备兼容、用例抽象"三大痛点；**iOS 官方没有对应物**——AVFoundation 本身就是唯一官方路线，Apple 用别的方式回应同样的问题：
+
+| CameraX 解决的问题 | iOS 的官方回应 |
+|---|---|
+| 生命周期感知（LifecylceOwner 绑定） | 系统中断通知 + AppDelegate 生命周期（第 2 章 2.4），无声明式绑定 |
+| 兼容性抽象（CameraXConfig） | 不需要：硬件行为跨机型一致（垂直整合） |
+| 用例抽象（Preview/ImageCapture/VideoCapture） | 输出对象体系本身就是用例（Photo/MovieFile/VideoDataOutput） |
+| CameraController（Kotlin 便捷层） | 无官方等价物；SwiftUI **没有官方相机捕获组件** |
+
+SwiftUI 集成现状（A 层事实）：官方示例 AVCam 提供 SwiftUI 实现变体，但结构仍是 `UIViewControllerRepresentable` 包装 UIKit 相机视图控制器；预览可单独用 `AVCaptureVideoPreviewLayer` 包进 `UIViewRepresentable`。截至 iOS 26，SwiftUI 没有官方的会话/输出组件，社区封装库是"易用层"的事实角色（自建或选库，注意其维护度与 AVFoundation 新特性跟进速度）。
+
+工程含义：Android 上"CameraX vs Camera2"的选型讨论在 iOS 不存在——直接学 AVFoundation 本体，本文档系列即按此定位撰写。
+
+## 1.5 与 Android 学习文档的对照阅读地图
 
 本仓库 Android 系列共四份文档，iOS 系列对应关系与差异说明：
 

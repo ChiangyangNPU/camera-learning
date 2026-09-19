@@ -14,6 +14,7 @@
 | 第 3 章 视频捕获接口 | 文件输出与逐帧输出双路线、AVAssetWriter、ProRes/Log 参数 | 第 1、2 章（录制部分） |
 | 第 4 章 高级能力接口 | MultiCam、深度、MetadataOutput、事件 API、Cinematic、外接 | 第 2 章（能力部分） |
 | 第 5 章 元数据与色彩管理对照 | 3A 控制语义总表、输出流对照、颜色空间、迁移检查清单 | 第 5 章 camera_metadata |
+| 第 6 章 PhotoKit、音频会话与导出 | 照片库授权/保存/读取/PHPicker、AVAudioSession、导出编辑三件套 | 第 1 章（存储/音频）+ 编辑生态 |
 
 ## 使用建议
 
