@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    tools:context=".MainActivity">
+
+    <!--
+        相机画面是 3:4（竖屏下内容为 1440x1920）。TextureView 默认会把画面非等比拉伸到
+        自己的 bounds，所以这里让它在运行时按“画面宽高比 + 完整放进屏幕”的尺寸居中，
+        剩余空间露出根布局的黑色背景，即等比的上下黑边，画面不会变形。
+    -->
+    <TextureView
+        android:id="@+id/texureview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center" />
+
+    <Button
+        android:id="@+id/capture_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="48dp"
+        android:text="@string/capture" />
+
+</FrameLayout>

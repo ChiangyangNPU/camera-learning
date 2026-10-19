@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Camera2Demo</string>
+    <string name="capture">拍照</string>
+    <string name="camera_permission_denied">需要相机权限才能使用</string>
+    <string name="no_camera">未找到可用相机</string>
+    <string name="camera_config_unavailable">相机配置不可用</string>
+    <string name="camera_open_failed">打开相机失败</string>
+    <string name="camera_preview_failed">创建预览失败</string>
+    <string name="camera_disconnected">相机连接已断开</string>
+    <string name="camera_error">相机发生错误</string>
+    <string name="camera_not_ready">相机尚未就绪</string>
+    <string name="capture_failed">拍照失败</string>
+    <string name="capture_save_failed">保存照片失败</string>
+    <string name="capture_saved">已保存：%1$s</string>
+</resources>
