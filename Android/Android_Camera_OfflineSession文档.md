@@ -11,7 +11,7 @@
 |---|---|---|
 | 第 1 章 问题定义 | 离线会话解决什么问题、三条核心思想、能力前提 | 建立概念 |
 | 第 2 章 版本与能力地图 | 各层接口/类的引入版本与源码位置总表 | 版本对齐、查源码 |
-| 第 3 章 App 层 API | switchToOffline / supportsOfflineProcessing / CameraOfflineSession / 回调语义 / 状态机 / Java 示例 | App 开发 |
+| 第 3 章 App 层 API | switchToOffline / supportsOfflineProcessing / CameraOfflineSession / 回调语义 / 状态机 / 完整 App 使用流程图 · 时序图 · Java 示例 | App 开发 |
 | 第 4 章 切换时序 | 一次成功切换的 App→框架→Service→HAL 全链路时序图 | 理解全链路 |
 | 第 5 章 Framework 原生层 | CameraDeviceClient / Camera3OfflineSession / CameraOfflineSessionClient / HIDL/AIDL 派生类 | 系统向 |
 | 第 6 章 HAL AIDL 协议 | switchToOffline、ICameraOfflineSession、三个 parcelable、HalStream.supportOffline 逐条解析 | HAL/系统向 |
@@ -194,55 +194,403 @@ stateDiagram-v2
     Closed --> [*]
 ```
 
-### 3.6 使用示例（Java）：连拍后台出图（B 层，基于 A 层 API 语义编写）
+### 3.6 完整使用流程图（App 视角）
 
-场景：连拍 10 张 JPEG 期间用户切到视频模式——用离线会话让剩余照片后台出图，同时立刻关闭旧会话、建新会话。
+一个 Camera App 使用离线会话的完整决策流程（含能力不支持与切换失败两条降级路径）：
+
+```mermaid
+flowchart TD
+    A["启动相机页"] --> B{"设备能力含 OFFLINE_PROCESSING？<br/>（isOfflineCapable）"}
+    B -- "否" --> Z1["普通流程：等出图再关会话，<br/>或 abortCaptures 丢弃请求"]
+    B -- "是" --> C["openCamera"]
+    C --> D["配流：预览 Surface + JPEG ImageReader<br/>（createCaptureSession）"]
+    D --> E{"会话 onConfigured 后<br/>supportsOfflineProcessing(JPEG Surface)？"}
+    E -- "否" --> Z1
+    E -- "是" --> F["setRepeatingRequest 启动预览"]
+    F --> G["连拍：N 次 session.capture<br/>（非重复请求）"]
+    G --> H{"用户中途切模式/<br/>切摄/退出？"}
+    H -- "否" --> I["等 onCaptureCompleted 全部到达<br/>正常 close 会话"]
+    H -- "是" --> J["switchToOffline([JPEG Surface],<br/>executor, callback)"]
+    J --> K{"返回值"}
+    K -- "null（同时回调 onSwitchFailed）" --> L["原会话仍可用：等剩余请求完成<br/>走正常关闭路径（勿调离线会话 close）"]
+    K -- "非 null（切换成功）" --> M["原会话即刻失效<br/>预览停止（重复请求被 abort）"]
+    M --> N["onReady：离线请求已拿到 sensor 帧"]
+    N --> O["此后 CameraDevice.close() 不影响离线出图；<br/>也可直接为新模式创建新会话"]
+    O --> P["离线阶段：onCaptureCompleted 继续回调<br/>（session 参数 = 离线会话）；<br/>ImageReader 持续消费并存图"]
+    P --> Q["onIdle：全部离线请求完成"]
+    Q --> R["offlineSession.close()"]
+    R --> S["onClosed：收尾释放"]
+```
+
+### 3.7 App 级时序图
+
+以"连拍 10 张中途切到视频模式"为例，App 侧各对象间的时序（系统内部链路见第 4 章全链路时序图）：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant App as App<br/>(相机 Helper)
+    participant CM as CameraManager
+    participant CD as CameraDevice
+    participant CS as 在线会话<br/>CameraCaptureSession
+    participant OS as 离线会话<br/>CameraOfflineSession
+    participant IR as ImageReader<br/>(JPEG)
+
+    U->>App: 进入相机
+    App->>CM: openCamera(id, stateCallback)
+    CM-->>App: onOpened(cameraDevice)
+    App->>CD: createCaptureSession(预览 Surface + IR.getSurface())
+    CD-->>App: onConfigured(session)
+    App->>CS: supportsOfflineProcessing(IR.getSurface())
+    CS-->>App: true
+    App->>CS: setRepeatingRequest(预览)
+    U->>App: 按下快门连拍 10 张
+    App->>CS: capture × 10（非重复请求，带 mCaptureCallback）
+    CS-->>IR: 出图（onImageAvailable → 存图）
+    CS-->>App: onCaptureCompleted（在线阶段逐帧返回）
+    U->>App: 中途切换到视频模式
+    App->>CS: switchToOffline([IR.getSurface()], executor, offlineCallback)
+    Note over CS: 重复请求被 abort；未选中的 pending 请求收尾/ERROR_BUFFER；<br/>切换成功后原会话即刻失效
+    CS-->>App: 返回 CameraOfflineSession（原会话不再可用）
+    OS-->>App: onReady（离线请求已从 sensor 拿到所需帧）
+    Note over App,CD: 此刻起 CameraDevice.close() 不影响离线出图
+    App->>CD: close()（或直接为视频模式创建新会话）
+    OS-->>IR: 离线 JPEG 继续写入
+    IR-->>App: onImageAvailable → 存图 → image.close()
+    OS-->>App: onCaptureCompleted（session 参数 = 离线会话）× 剩余帧
+    OS-->>App: onIdle（全部离线请求完成）
+    App->>OS: close()
+    OS-->>App: onClosed（收尾）
+```
+
+### 3.8 完整 Java 示例：连拍中途切模式（B 层，基于 A 层 API 语义编写）
+
+**连拍的两种形态与离线会话的兼容性（设计理由）**：Camera2 的连拍有两种下发形态，它们与离线会话的兼容性截然不同——
+
+| 连拍形态 | 下发方式 | 请求类型 | 离线会话兼容性 |
+|---|---|---|---|
+| 定长连拍（一次快门拍 N 张：HDR+/夜景堆栈、连拍合影） | 循环 `session.capture()` × N | **非重复请求** | ✅ 未完成的请求会被迁移，切模式不丢照片 |
+| 持续连拍（长按快门扫射） | `setRepeatingRequest()` | **重复请求** | ❌ 切换序列中被 abort，剩余帧全部丢弃 |
+
+依据是第 7 章约束表第 1 条（官方语义）：`switchToOffline` 只迁移**非重复**的 pending 请求，所有活动的重复请求在切换序列中被 abort。因此"连拍中途切走、剩余照片后台出图"这一体验，只有把连拍实现为**有限个独立 `capture()` 请求**才成立。这也决定了 3.8 示例中 `startBurst()` 的写法：循环下发 N 个非重复请求，而不是用重复请求模板。补充两点：N 个请求受 in-flight 上限约束会自动排队（不会压垮 HAL）；真实连拍通常还会先收敛/锁定 AE，避免逐帧触发 precapture，示例为聚焦离线链路将这些省略。
+
+场景：连拍 10 张 JPEG 期间用户切到视频模式——用离线会话让剩余照片后台出图，同时立刻释放在线会话/为新模式建新会话。示例覆盖"打开相机 → 配流 → 预览 → 连拍 → 切离线 → 离线回调 → 出图消费 → 资源收尾"完整链路；省略的工程细节（摄像头选择、尺寸选择、旋转角度、存图实现）可参考仓库 `demo/Camera2Demo`。
 
 ```java
+import android.content.Context;
+import android.graphics.ImageFormat;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CameraMetadata;
+import android.hardware.camera2.CameraOfflineSession;
+import android.hardware.camera2.CaptureFailure;
+import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
+import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.OutputConfiguration;
+import android.hardware.camera2.params.SessionConfiguration;
+import android.media.Image;
+import android.media.ImageReader;
+import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.view.Surface;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
- * 演示离线会话的标准用法：连拍中途切换模式，剩余照片后台完成。
- * 前提：设备能力含 OFFLINE_PROCESSING（API 30+），jpegSurface 所在流支持离线。
+ * 离线会话完整示例：连拍中途切模式，剩余照片后台出图（minSdk 30）。
+ *
+ * 完整流程：能力检查 → 打开相机 → 配流（预览 + JPEG）→ 查流级离线支持 → 预览
+ *          → 连拍 N 张 → switchToOffline → 关设备/建新会话 → 离线结果继续回调
+ *          → onIdle → 关闭离线会话。
+ *
+ * 对应 3.6 流程图与 3.7 时序图。为聚焦离线会话主链路，省略摄像头/尺寸选择、
+ * 旋转角度计算与存图实现（完整工程版见仓库 demo/Camera2Demo）。
  */
-public class BurstOfflineDemo {
+public class OfflineBurstCamera {
 
-    private CameraCaptureSession mSession;      // 当前在线会话
-    private Surface mJpegSurface;               // 拍照输出（ImageReader 的 Surface）
+    private static final int BURST_COUNT = 10;      // 连拍张数
+
+    private final CameraManager mCameraManager;
+    private final Executor mCallbackExecutor;       // 相机回调执行器（后台线程）
+
+    private String mCameraId;
+    private CameraCharacteristics mCharacteristics;
+    private HandlerThread mCameraThread;
+    private Handler mCameraHandler;
+
     private CameraDevice mCameraDevice;
+    private CameraCaptureSession mSession;           // 在线会话（切换成功后失效）
+    private CameraOfflineSession mOfflineSession;    // 离线会话（切换成功后有效）
 
-    /** 用户切模式时调用：把拍照流上未完成的请求移入离线会话。 */
-    public void onSwitchToVideoMode() {
+    private Surface mPreviewSurface;                 // 预览输出（TextureView，不参与离线）
+    private ImageReader mImageReader;                // JPEG 输出（离线期间继续出图）
+    private Surface mJpegSurface;
+    @SuppressWarnings("unused")
+    private android.util.Size mPreviewSize, mPictureSize;  // 由 StreamConfigurationMap 选择，从略
+
+    private final AtomicInteger mPendingShots = new AtomicInteger();  // 未完成拍照计数
+    private final AtomicBoolean mOfflineReady = new AtomicBoolean();  // onReady 门闩
+
+    public OfflineBurstCamera(Context context) throws CameraAccessException {
+        mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+        mCameraId = "0";                              // 实际应遍历选择后置主摄（从略）
+        mCharacteristics = mCameraManager.getCameraCharacteristics(mCameraId);
+        // 相机后台线程：请求下发与全部回调都在它上面执行，避免占用主线程
+        mCameraThread = new HandlerThread("OfflineBurstCamera");
+        mCameraThread.start();
+        mCameraHandler = new Handler(mCameraThread.getLooper());
+        mCallbackExecutor = command -> mCameraHandler.post(command);
+    }
+
+    // ------------------------------------------------------------------
+    // 第 1 步：设备级能力检查——不支持就整体走普通流程
+    // ------------------------------------------------------------------
+
+    /** 设备能力是否含 OFFLINE_PROCESSING（API 30 起）。 */
+    public boolean isOfflineCapable() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return false;                             // App 层 API 自 API 30 引入
+        }
+        int[] caps = mCharacteristics.get(
+                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+        if (caps == null) {
+            return false;
+        }
+        for (int c : caps) {
+            if (c == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_OFFLINE_PROCESSING) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------
+    // 第 2 步：打开相机
+    // ------------------------------------------------------------------
+
+    public void openCamera() throws CameraAccessException {
+        mCameraManager.openCamera(mCameraId, mDeviceStateCallback, mCameraHandler);
+    }
+
+    private final CameraDevice.StateCallback mDeviceStateCallback =
+            new CameraDevice.StateCallback() {
+        @Override public void onOpened(CameraDevice camera) {
+            mCameraDevice = camera;
+            createSession();
+        }
+        @Override public void onDisconnected(CameraDevice camera) {
+            camera.close();
+            mCameraDevice = null;
+        }
+        @Override public void onError(CameraDevice camera, int error) {
+            camera.close();
+            mCameraDevice = null;
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 第 3 步：配置会话——预览流 + JPEG 流（后者是离线候选）
+    // ------------------------------------------------------------------
+
+    private void createSession() {
         try {
-            CameraOfflineSession offline = mSession.switchToOffline(
-                    List.of(mJpegSurface),                 // 只离线保留拍照流
-                    Runnable::run,                          // 生产上用后台 Executor
-                    new CameraOfflineSession.CameraOfflineSessionCallback() {
-                @Override public void onReady(CameraOfflineSession s) {
-                    // ready 之后才能"自由"关设备：离线出图不受影响
-                    mCameraDevice.close();                  // 或直接为新模式创建新会话
-                }
-                @Override public void onSwitchFailed(CameraOfflineSession s) {
-                    // 降级：切换失败，原会话仍然有效，等剩余请求自然完成再关闭
-                    // （不要再调用 s.close()，也不会收到 onClosed）
-                }
-                @Override public void onIdle(CameraOfflineSession s) {
-                    // 全部离线照片处理完毕，收尾
-                    s.close();
-                }
-                @Override public void onError(CameraOfflineSession s, int status) {
-                    // 出错时不会自动 onClosed，必须自行 close 释放
-                    s.close();
-                }
-                @Override public void onClosed(CameraOfflineSession s) {
-                    // 离线会话彻底结束（若之前没有 onIdle，剩余请求已被丢弃）
-                }
-            });
-            // 注意：返回后原 mSession 已失效；返回 null 表示切换失败
-        } catch (IllegalArgumentException e) {
-            // Surface 未注册 / 共享 Surface / Surface 组成员：原会话仍有效，可继续用
+            // JPEG 输出：maxImages 给足连拍余量，消费端必须及时 image.close()
+            mImageReader = ImageReader.newInstance(
+                    mPictureSize.getWidth(), mPictureSize.getHeight(),
+                    ImageFormat.JPEG, BURST_COUNT + 2);
+            mImageReader.setOnImageAvailableListener(
+                    mImageAvailableListener, mCameraHandler);
+            mJpegSurface = mImageReader.getSurface();
+
+            SessionConfiguration config = new SessionConfiguration(
+                    SessionConfiguration.SESSION_REGULAR,
+                    Arrays.asList(
+                            new OutputConfiguration(mPreviewSurface),  // 预览（不迁移）
+                            new OutputConfiguration(mJpegSurface)),    // 拍照（离线候选）
+                    mCallbackExecutor,
+                    mSessionStateCallback);
+            mCameraDevice.createCaptureSession(config);
         } catch (CameraAccessException e) {
-            // 设备断连或致命错误
+            // 配流失败处理（重试/上报，从略）
         }
     }
+
+    private final CameraCaptureSession.StateCallback mSessionStateCallback =
+            new CameraCaptureSession.StateCallback() {
+        @Override public void onConfigured(CameraCaptureSession session) {
+            mSession = session;
+            startPreviewAndCheckOffline();
+        }
+        @Override public void onConfigureFailed(CameraCaptureSession session) {
+            // 组合不被支持：换尺寸/换流组合重试（从略）
+        }
+        @Override public void onClosed(CameraCaptureSession session) {
+            // 切换成功后原会话到达的终态（等价于被 close）
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 第 4 步：流级离线支持查询 + 启动预览
+    // ------------------------------------------------------------------
+
+    private void startPreviewAndCheckOffline() {
+        try {
+            // 流级开关：只有返回 true 的 Surface 才允许放进 switchToOffline 列表
+            boolean jpegOfflineOk = mSession.supportsOfflineProcessing(mJpegSurface);
+            // ……据 jpegOfflineOk 决定是否启用"边拍边切"体验（false 则走降级路径）
+
+            CaptureRequest.Builder preview =
+                    mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+            preview.addTarget(mPreviewSurface);
+            mSession.setRepeatingRequest(preview.build(), null, mCameraHandler);
+        } catch (CameraAccessException e) {
+            // 从略
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 第 5 步：连拍——N 个非重复请求（离线会话只迁移这类请求）
+    // ------------------------------------------------------------------
+
+    public void startBurst() throws CameraAccessException {
+        mPendingShots.set(BURST_COUNT);
+        for (int i = 0; i < BURST_COUNT; i++) {
+            CaptureRequest.Builder still =
+                    mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            still.addTarget(mJpegSurface);
+            // 生产代码还需设置 JPEG_ORIENTATION / AF 触发等（见 Camera2Demo）
+            mSession.capture(still.build(), mCaptureCallback, mCameraHandler);
+        }
+    }
+
+    /**
+     * 拍照结果回调：在线/离线两个阶段共用。
+     * 切换成功后它的 session 参数会变成 CameraOfflineSession（官方语义，
+     * 见 3.3 节），回调本身不需要换监听器。
+     */
+    private final CameraCaptureSession.CaptureCallback mCaptureCallback =
+            new CameraCaptureSession.CaptureCallback() {
+        @Override public void onCaptureCompleted(CameraCaptureSession session,
+                CaptureRequest request, TotalCaptureResult result) {
+            mPendingShots.decrementAndGet();
+        }
+        @Override public void onCaptureFailed(CameraCaptureSession session,
+                CaptureRequest request, CaptureFailure failure) {
+            mPendingShots.decrementAndGet();
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 第 6 步：用户中途切模式——发起离线切换
+    // ------------------------------------------------------------------
+
+    public void onUserSwitchMode() {
+        CameraOfflineSession offline;
+        try {
+            offline = mSession.switchToOffline(
+                    List.of(mJpegSurface),            // 只离线保留 JPEG 流（预览不迁移）
+                    mCallbackExecutor,
+                    mOfflineCallback);
+        } catch (IllegalArgumentException e) {
+            // Surface 未注册 / 共享 Surface / Surface 组成员：原会话仍有效，直接返回
+            return;
+        } catch (CameraAccessException e) {
+            // 设备断连等致命错误：走整体释放路径
+            return;
+        }
+        if (offline != null) {
+            // 切换成功：原会话自此失效，此后回调的 session 参数都是离线会话
+            mSession = null;
+            mOfflineSession = offline;
+            // 此处可立即为视频模式创建新会话（受 6.5 节"保证流组合"约束）
+        }
+        // 返回 null = 切换失败（onSwitchFailed 也会回调）：原会话保持可用，
+        // 继续用 mSession 等剩余请求完成即可
+    }
+
+    /** 离线会话回调：状态机见 3.5 节，语义见 3.4 节表格。 */
+    private final CameraOfflineSession.CameraOfflineSessionCallback mOfflineCallback =
+            new CameraOfflineSession.CameraOfflineSessionCallback() {
+        @Override public void onReady(CameraOfflineSession session) {
+            // ready 之后关设备不再影响离线出图（ready 之前不保证）
+            mOfflineReady.set(true);
+            if (mCameraDevice != null) {
+                mCameraDevice.close();   // 演示：直接关设备；生产可为新模式建新会话
+            }
+        }
+        @Override public void onSwitchFailed(CameraOfflineSession session) {
+            // 切换失败：无需（也不能）close 这个离线会话，也不会再收到 onClosed；
+            // 降级路径 = 继续用原会话等完剩余请求
+        }
+        @Override public void onIdle(CameraOfflineSession session) {
+            // 全部离线请求完成：安全收尾
+            session.close();
+        }
+        @Override public void onError(CameraOfflineSession session, int error) {
+            // 内部错误：不会自动 onClosed，必须自行 close 释放
+            session.close();
+        }
+        @Override public void onClosed(CameraOfflineSession session) {
+            mOfflineSession = null;
+            // 收尾 ImageReader / 相机线程（同 release() 后半段）
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 第 7 步：出图消费——离线期间必须持续运行，不能随"切模式"停掉
+    // ------------------------------------------------------------------
+
+    private final ImageReader.OnImageAvailableListener mImageAvailableListener =
+            reader -> {
+        // 关键：离线切换后 JPEG 缓冲仍会继续写入该 Surface。消费线程若随切模式
+        // 一起停止，缓冲会堆积并卡住离线出图（HAL 侧归还缓冲依赖消费端 close）
+        try (Image image = reader.acquireLatestImage()) {
+            if (image != null) {
+                byte[] jpeg = imageToJpegBytes(image);       // 拷贝字节后尽快归还
+                saveJpegToMediaStore(jpeg);                  // 落盘实现见 Camera2Demo
+            }
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 第 8 步：资源释放（页面退出兜底）
+    // ------------------------------------------------------------------
+
+    public void release() {
+        if (mSession != null) {
+            mSession.close();                    // 正常关闭在线会话
+            mSession = null;
+        }
+        if (mOfflineSession != null && mOfflineReady.get()) {
+            mOfflineSession.close();             // onReady 之前调用会抛 IllegalStateException
+        }
+        if (mCameraDevice != null) {
+            mCameraDevice.close();
+            mCameraDevice = null;
+        }
+        if (mImageReader != null) {
+            mImageReader.close();
+            mImageReader = null;
+        }
+        if (mCameraThread != null) {
+            mCameraThread.quitSafely();
+            mCameraThread = null;
+        }
+    }
+
+    // ------- 省略的辅助方法：选摄像头/选尺寸/字节拷贝/存图（见 Camera2Demo） -------
+    private byte[] imageToJpegBytes(Image image) { return new byte[0]; }
+    private void saveJpegToMediaStore(byte[] jpeg) { }
 }
 ```
 
@@ -251,7 +599,9 @@ public class BurstOfflineDemo {
 - 切换前先用 `mSession.supportsOfflineProcessing(mJpegSurface)` 确认流级支持；
 - **重复请求（预览）不会被迁移**，只迁移非重复的 pending 请求（连拍/单拍）；
 - `onReady` 前不要 `CameraDevice.close()`（否则不保证离线请求完成）；`onReady` 前也不要对离线会话调 `close()`（抛 `IllegalStateException`）；
-- 切换失败的正常降级路径是"继续用原会话等完"，而不是重试切换。
+- 切换失败的正常降级路径是"继续用原会话等完"，而不是重试切换；
+- **出图消费不能停**：切模式后 `ImageReader` 的消费与 `image.close()` 必须继续，否则离线缓冲堆积、离线出图被卡住；
+- 切换后新建的在线会话受 6.5 节"保证流组合"约束（在线帧率允许降到 50%），新模式的流配置要按此预算设计。
 
 ---
 
@@ -542,3 +892,4 @@ ICameraOfflineSession switchToOffline(in int[] streamsToKeep)
 ## 修改记录
 
 - 2026-10-25：首次成文。App API（API 30）/ Framework（CameraDeviceClient、Camera3OfflineSession、CameraOfflineSessionClient）/ HAL AIDL（switchToOffline、ICameraOfflineSession、三个 parcelable、HalStream.supportOffline）三层官方语义整理，含全链路时序图、状态机、约束速查表与源码索引。
+- 2026-10-25：第 3 章扩充完整 App 使用示例：新增 3.6 App 视角流程图（能力检查→配流→流级查询→连拍→切换决策→离线收尾/降级路径）、3.7 App 级时序图、3.8 两种连拍形态与离线会话兼容性说明（非重复请求可迁移 / 重复请求被 abort）、3.8 完整 Java 示例（OfflineBurstCamera：打开相机→配流→预览→连拍→switchToOffline→离线回调→ImageReader 持续消费→资源收尾）。

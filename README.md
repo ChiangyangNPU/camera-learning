@@ -136,7 +136,7 @@ ISP/3A 文档额外特性：厂商闭源内容（CAMX/mtkcam 内部）按 **A（
 
 | 文档 | 内容 | 适用场景 |
 |---|---|---|
-| [Android_Camera_OfflineSession文档.md](Android/Android_Camera_OfflineSession文档.md) | 离线会话（Offline Session）官方源码级专题：问题定义与核心思想、版本与能力地图（App API 30 / HIDL 3.6 / AIDL HAL）、App 层 API 语义（switchToOffline、supportsOfflineProcessing、回调与状态机、Java 示例）、全链路切换时序图、Framework 原生层（CameraDeviceClient/Camera3OfflineSession/CameraOfflineSessionClient）、HAL AIDL 协议逐条解析（含 HalStream.supportOffline 规则与离线期间保证流组合）、17 条约束速查表、与 abortCaptures/ZSL/CameraX/iOS 机制对比、面试速记 10 条；全部关键语义附 AOSP/官方出处链接 | 离线会话机制深潜、系统向面试、HAL 协议核对 |
+| [Android_Camera_OfflineSession文档.md](Android/Android_Camera_OfflineSession文档.md) | 离线会话（Offline Session）官方源码级专题：问题定义与核心思想、版本与能力地图（App API 30 / HIDL 3.6 / AIDL HAL）、App 层 API 语义（switchToOffline、supportsOfflineProcessing、回调与状态机）、完整 App 使用流程图/时序图与 Java 示例（连拍中途切模式全链路）、系统内部全链路切换时序图、Framework 原生层（CameraDeviceClient/Camera3OfflineSession/CameraOfflineSessionClient）、HAL AIDL 协议逐条解析（含 HalStream.supportOffline 规则与离线期间保证流组合）、17 条约束速查表、与 abortCaptures/ZSL/CameraX/iOS 机制对比、面试速记 10 条；全部关键语义附 AOSP/官方出处链接 | 离线会话机制深潜、App 集成参考、系统向面试、HAL 协议核对 |
 
 ## iOS 三份主文档
 
@@ -199,3 +199,4 @@ iOS 系列文档特性：
 * 2026-10-25：新增《Android\_Camera\_性能分析文档》（8 章 + perf\_docs/ 分章源文件）：指标体系与预算、度量方法学（FrameMetrics/JankStats/三环境分工）、启动/预览/拍照录像/内存带宽/功耗热分域优化、稳定性与线上体系（Vitals/CI 门禁/复盘模板/成熟度）；内容融合仓库文档与官方公开资料（Vitals、Thermal API、Baseline Profiles、Macrobenchmark、CameraX、Battery Historian）与业界实践，README 关系图谱同步更新。
 * 2026-10-25：《Android\_Camera\_性能分析文档》全 8 章扩写为详解版（593 → 1207 行）：各章补充机制推导、代码骨架（FrameMetrics/JankStats/Thermal 监听/两段式会话/栅栏模式/消费纪律/退避重试/Macrobenchmark）、算例（帧预算分账、曝光-帧率数学、内存峰值、带宽、高速摄像延迟换算）与实践纪律（滞回设计、基线管理、复盘模板、成熟度自检）。
 * 2026-10-25：新增《Android\_Camera\_OfflineSession文档》（离线会话官方源码级专题，单文件 9 章）：App API（API 30：switchToOffline/supportsOfflineProcessing/回调状态机/Java 示例）、Framework 原生层（CameraDeviceClient/Camera3OfflineSession/CameraOfflineSessionClient）、HAL AIDL 协议逐条解析（三个 parcelable、HalStream.supportOffline、离线期间保证流组合）、全链路时序图与 17 条约束速查表，关键语义全部附 AOSP/官方链接；修正《算法集成文档》3.5 节"App 侧无直接 API"的错误表述（聚合文档与 algo\_docs/ch3 同步），系统题 Q12、APP 题 Q46 补充交叉引用，README 关系图谱新增 A8 节点。
+* 2026-10-25：《Android\_Camera\_OfflineSession文档》第 3 章扩充完整 App 使用示例：新增 3.6 App 视角流程图（能力检查→配流→流级查询→连拍→切换决策→离线收尾/降级路径）、3.7 App 级时序图、3.8 两种连拍形态与离线会话兼容性说明（非重复 `capture()` 可迁移 / `setRepeatingRequest` 会被 abort）与完整 Java 示例（OfflineBurstCamera：打开相机→配流→预览→连拍→switchToOffline→离线回调→ImageReader 持续消费→资源收尾，minSdk 30）。
