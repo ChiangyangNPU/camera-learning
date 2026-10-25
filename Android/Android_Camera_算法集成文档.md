@@ -19,7 +19,8 @@
 - 算法能用的"原料"（RAW/ISP stage/3A）见《Android_Camera_ISP_3A文档》第 1~3 章；平台 HAL 架构（CAMX/Chi/mtkcam）见第 4 章；
 - 会话、请求、结果与 ZSL/reprocess 的框架语义见《Android_Camera_源码链路文档》第 3~4 章与《Android_Camera_接口文档》第 1/5 章；
 - 预览 GL 方案的代码骨架见《Android_Camera_追问链面试题》链 2 的延伸部分；
-- 算法导致的掉帧/延迟如何用 trace 定位，见《Android_Camera_Trace分析文档》第 3~5 章。
+- 算法导致的掉帧/延迟如何用 trace 定位，见《Android_Camera_Trace分析文档》第 3~5 章；
+- 路线 D（离线处理会话）的 App/Service/HAL 三层官方语义展开，见《Android_Camera_OfflineSession文档》。
 
 ## 一句话结论
 
@@ -297,9 +298,9 @@ flowchart LR
 
 ## 3.5 路线 D：离线处理会话（Android 11+）
 
-- HAL 支持 `offline_processing` 能力时，切会话/关相机可以把**已提交未完成**的请求与缓冲移交给 `ICameraOfflineSession` 继续处理；
+- HAL 支持 `offline_processing` 能力时，切会话/关相机可以把**已提交未完成的非重复请求**与缓冲移交给 `ICameraOfflineSession` 继续处理；
 - 典型收益：连拍/多帧拍照时，用户切走相机，剩余照片后台出图，不占用在线设备；
-- App 侧无直接 API（框架/HAL 内部机制），但会体现在"出图延迟"与"相机可快速释放"上；
+- App 层有公开 API（API 30+）：`CameraCaptureSession.switchToOffline()` 发起切换、`supportsOfflineProcessing(Surface)` 查询流级支持；`onReady` 之后关相机设备不影响离线出图。App/Service/HAL 三层完整语义见《Android_Camera_OfflineSession文档》；
 - 对照 iOS：deferred photo processing 是应用可见的"先出预览成品、后台替换精修"机制（见 iOS 学习文档第 4 章），Android 的离线会话更偏框架协议。
 
 ## 3.6 画质杠杆：钱花在哪最值

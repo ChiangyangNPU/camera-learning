@@ -380,7 +380,7 @@ cameraserver 用 in-flight map 按 `frameNumber` 匹配请求与结果。**parti
 * `ICameraDevice`：打开会话（`open` → `ICameraDeviceSession`）、查静态元数据；
 * `ICameraDeviceSession`：配流（`configureStreams`）、构造默认请求、提交请求（`processCaptureRequest`）、`flush`、缓冲区管理；
 * `ICameraDeviceCallback`：HAL → 框架的回调（`notify`/`processCaptureResult`）；
-* 另有 `ICameraOfflineSession`（离线处理会话）。
+* 另有 `ICameraOfflineSession`（离线处理会话：`ICameraDeviceSession.switchToOffline` 切入，继续交付切换前的 in-flight 请求；App 层对应 `CameraCaptureSession.switchToOffline()`，API 30。详见《Android_Camera_OfflineSession文档》）。
 
 AIDL 与 HIDL 主要差异：统一可版本化接口、Android 13 起新功能只在 AIDL 提供。
 

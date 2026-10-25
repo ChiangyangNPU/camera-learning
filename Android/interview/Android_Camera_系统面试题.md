@@ -62,7 +62,7 @@ Android 12 引入的特权能力（`REQUEST_AVAILABLE_CAPABILITIES_SYSTEM_CAMERA
 
 ### Q12. 离线处理会话（offline session）解决什么问题？ ★★★
 
-Android 11 引入：切会话/关相机时，把**已提交未完成**的请求及其缓冲区移交给 `ICameraOfflineSession` 继续处理，释放在线设备给新 client。典型场景：连拍过程中用户切模式，剩余照片后台出图。要求 HAL 支持 `offline_processing` 能力；框架侧 Camera3Device 拆分在线/离线流。追问：与 APP 层"deferred photo processing"（iOS 概念，见 iOS 系列）的概念区分——Android 离线会话是框架协议级机制，不是成像质量特性。
+Android 11（API 30）引入：切会话/关相机时，把**已提交未完成的非重复请求**及其缓冲区移交给 `ICameraOfflineSession` 继续处理，释放在线设备给新 client。App 层有公开 API：`CameraCaptureSession.switchToOffline()`（API 30；`onReady` 之后 `CameraDevice.close()` 不影响离线出图）与 `supportsOfflineProcessing(Surface)` 流级查询。要求 HAL 支持 `REQUEST_AVAILABLE_CAPABILITIES_OFFLINE_PROCESSING` 能力，流级支持经 `HalStream.supportOffline` 上报；HAL 侧接口最初定义于 HIDL device@3.6，AIDL HAL 同名沿用。框架侧 Camera3Device 把 in-flight 请求/缓冲记录/帧号状态移交给 Camera3OfflineSession，service 用独立的 CameraOfflineSessionClient 持有。典型场景：连拍过程中用户切模式，剩余照片后台出图。三层完整语义见《Android_Camera_OfflineSession文档》。追问：与 APP 层"deferred photo processing"（iOS 概念，见 iOS 系列）的概念区分——Android 离线会话是框架协议级机制，不是成像质量特性。
 
 ***
 

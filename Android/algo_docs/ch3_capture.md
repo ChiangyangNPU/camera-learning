@@ -74,9 +74,9 @@
 
 ## 3.5 路线 D：离线处理会话（Android 11+）
 
-- HAL 支持 `offline_processing` 能力时，切会话/关相机可以把**已提交未完成**的请求与缓冲移交给 `ICameraOfflineSession` 继续处理；
+- HAL 支持 `offline_processing` 能力时，切会话/关相机可以把**已提交未完成的非重复请求**与缓冲移交给 `ICameraOfflineSession` 继续处理；
 - 典型收益：连拍/多帧拍照时，用户切走相机，剩余照片后台出图，不占用在线设备；
-- App 侧无直接 API（框架/HAL 内部机制），但会体现在"出图延迟"与"相机可快速释放"上；
+- App 层有公开 API（API 30+）：`CameraCaptureSession.switchToOffline()` 发起切换、`supportsOfflineProcessing(Surface)` 查询流级支持；`onReady` 之后关相机设备不影响离线出图。App/Service/HAL 三层完整语义见《Android_Camera_OfflineSession文档》；
 - 对照 iOS：deferred photo processing 是应用可见的"先出预览成品、后台替换精修"机制（见 iOS 学习文档第 4 章），Android 的离线会话更偏框架协议。
 
 ## 3.6 画质杠杆：钱花在哪最值

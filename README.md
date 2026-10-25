@@ -18,6 +18,8 @@ flowchart TB
         A4 --> A6
         A6 --> A7["性能分析文档<br/>指标/体系总纲（8 章）"]
         A5 --> A7
+        A3 --> A8["OfflineSession 文档<br/>离线会话专题（官方源码级）"]
+        A5 --> A8
     end
     subgraph IV["面试题集（按考点反查主文档）"]
         Q1["APP 面试题（65）"]
@@ -35,6 +37,7 @@ flowchart TB
     A2 -.->|"接口/追问"| Q3
     A3 -.->|"系统考点"| Q2
     A4 -.->|"ISP/平台考点"| Q2
+    A8 -.->|"离线会话考点（Q12/Q46）"| Q2
     A6 -.->|"性能考点"| Q4
     A7 -.->|"性能体系考点"| Q6
     A1 -.->|"通用底座"| Q5
@@ -45,7 +48,7 @@ flowchart TB
 
 读图方式：
 
-- **Android 主线**（实线）：框架机制 → API 速查 → 源码链路 → ISP/3A → 算法集成 → Trace 性能分析，前一份是后一份的基础；
+- **Android 主线**（实线）：框架机制 → API 速查 → 源码链路 → ISP/3A → 算法集成 → Trace 性能分析，前一份是后一份的基础；OfflineSession 文档是从源码链路与算法集成延伸出的**专题深潜**；
 - **面试题集**（虚线）：按考点反查对应主文档，答案可逐层溯源；
 - **iOS 三份**（双向箭头）：与 Android 体系平行，章节按"架构/接口/ISP"一一对照阅读。
 
@@ -61,6 +64,7 @@ camera-learning/
 │   ├── Android_Camera_Trace分析文档.md # ★ 性能分析：Perfetto trace 基础 + 相机启动/拍照实战（6 章）
 │   ├── Android_Camera_性能分析文档.md # ★ 性能总纲：指标/度量/分域优化/线上体系，含官方与业界实践（8 章）
 │   ├── Android_Camera_算法集成文档.md # ★ 算法工程：预览/拍照两条链路的算法集成与选型（5 章）
+│   ├── Android_Camera_OfflineSession文档.md # ★ 专题：离线会话三层官方语义（App/Service/HAL，API 30+，全链路时序与约束清单）
 │   ├── interview/                    # 面试题集（6 份）
 │   │   ├── Android_Camera_APP_面试题.md  # APP 层综合（65 题，★~★★★ 分级）
 │   │   ├── Android_Camera_系统面试题.md  # framework/HAL/ISP 系统向进阶（45 题）
@@ -128,6 +132,12 @@ ISP/3A 文档额外特性：厂商闭源内容（CAMX/mtkcam 内部）按 **A（
 
 建议与《Android\_Camera\_ISP\_3A文档》第 2~~4 章（ISP stage/3A/平台 HAL）、《Android\_Camera\_Trace分析文档》第 3~~5 章（定位算法导致的掉帧/延迟）配合阅读。
 
+## Camera OfflineSession 专题文档
+
+| 文档 | 内容 | 适用场景 |
+|---|---|---|
+| [Android_Camera_OfflineSession文档.md](Android/Android_Camera_OfflineSession文档.md) | 离线会话（Offline Session）官方源码级专题：问题定义与核心思想、版本与能力地图（App API 30 / HIDL 3.6 / AIDL HAL）、App 层 API 语义（switchToOffline、supportsOfflineProcessing、回调与状态机、Java 示例）、全链路切换时序图、Framework 原生层（CameraDeviceClient/Camera3OfflineSession/CameraOfflineSessionClient）、HAL AIDL 协议逐条解析（含 HalStream.supportOffline 规则与离线期间保证流组合）、17 条约束速查表、与 abortCaptures/ZSL/CameraX/iOS 机制对比、面试速记 10 条；全部关键语义附 AOSP/官方出处链接 | 离线会话机制深潜、系统向面试、HAL 协议核对 |
+
 ## iOS 三份主文档
 
 | 文档                                                          | 内容                                                                                                                                                        | 适用场景                        |
@@ -188,3 +198,4 @@ iOS 系列文档特性：
 * 2026-10-25：新增面试题集《Android\_Camera\_性能分析面试题》（46 题：指标体系与度量/启动/预览流畅性/拍照延迟/内存与带宽/功耗热与稳定性/线上监控与 CI 回归/实战案例 + 板块九公开资料扩展——JankStats/FrameMetrics、Thermal API、功耗测量工具链、CameraX 性能配置、Android Vitals、Macrobenchmark、行业 KPI 术语），面试题集增至 6 份；同日完成 interview 目录 5 份题集的事实审校（Camera Extensions API 31、Binder 线程池 15、fence 语义、SENSOR_TIMESTAMP 定义等 12 处修正）。
 * 2026-10-25：新增《Android\_Camera\_性能分析文档》（8 章 + perf\_docs/ 分章源文件）：指标体系与预算、度量方法学（FrameMetrics/JankStats/三环境分工）、启动/预览/拍照录像/内存带宽/功耗热分域优化、稳定性与线上体系（Vitals/CI 门禁/复盘模板/成熟度）；内容融合仓库文档与官方公开资料（Vitals、Thermal API、Baseline Profiles、Macrobenchmark、CameraX、Battery Historian）与业界实践，README 关系图谱同步更新。
 * 2026-10-25：《Android\_Camera\_性能分析文档》全 8 章扩写为详解版（593 → 1207 行）：各章补充机制推导、代码骨架（FrameMetrics/JankStats/Thermal 监听/两段式会话/栅栏模式/消费纪律/退避重试/Macrobenchmark）、算例（帧预算分账、曝光-帧率数学、内存峰值、带宽、高速摄像延迟换算）与实践纪律（滞回设计、基线管理、复盘模板、成熟度自检）。
+* 2026-10-25：新增《Android\_Camera\_OfflineSession文档》（离线会话官方源码级专题，单文件 9 章）：App API（API 30：switchToOffline/supportsOfflineProcessing/回调状态机/Java 示例）、Framework 原生层（CameraDeviceClient/Camera3OfflineSession/CameraOfflineSessionClient）、HAL AIDL 协议逐条解析（三个 parcelable、HalStream.supportOffline、离线期间保证流组合）、全链路时序图与 17 条约束速查表，关键语义全部附 AOSP/官方链接；修正《算法集成文档》3.5 节"App 侧无直接 API"的错误表述（聚合文档与 algo\_docs/ch3 同步），系统题 Q12、APP 题 Q46 补充交叉引用，README 关系图谱新增 A8 节点。
