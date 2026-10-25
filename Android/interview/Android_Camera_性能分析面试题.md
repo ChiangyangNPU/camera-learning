@@ -1,6 +1,8 @@
 # Android Camera 性能分析面试题（指标 / 优化 / 体系）
 
 > 与既有题集的分工：《Android_Camera_Trace面试题》讲**怎么用 trace 看数据**（工具视角），本集讲**相机性能的指标定义、优化手段与监控体系**（性能工程视角）；《Android_Camera_APP_面试题》Q36/Q65 与《Android_Camera_系统面试题》Q40 是单点考题，本集把它们展开成完整体系并补充内存/功耗/线上监控等空白域。
+>
+> 内容来源：一~八板块以本仓库文档为骨架；**板块九（Q37-Q46）为本仓库之外的公开资料扩展**——Android 官方 developer docs（FrameMetrics/JankStats、Thermal API、Android Vitals、Macrobenchmark）、androidx 库（metrics、camera-view）、Perfetto 官方文档、Play Console 公布的行为阈值，以及相机行业通行的 KPI 实践；不确定的细节均以"以官方文档为准"标注。
 > 难度标注：★ 基础 / ★★ 中级 / ★★★ 高级（性能/系统方向加分项）。
 
 ## 目录
@@ -13,6 +15,7 @@
 - [六、功耗、热与稳定性](#六功耗热与稳定性)
 - [七、线上监控与测试体系](#七线上监控与测试体系)
 - [八、实战与开放题](#八实战与开放题)
+- [九、扩展专题：公开资料与行业实践](#九扩展专题公开资料与行业实践)
 
 ---
 
@@ -65,7 +68,7 @@
 
 ### Q6. 功耗和热怎么度量？ ★★★
 
-- 功耗：固定脚本（30min 预览/录像）下的耗电量（mAh 或 %）、平均电流（Battery Historian/厂商工具）；
+- 功耗：固定脚本（30min 预览/录像）下的耗电量（mAh 或 %）、平均电流（Battery Historian/厂商工具，工具链细节见 Q41）；
 - 热：关键温度传感器曲线（surface/battery/skin）、热状态下帧率与出图延迟的衰减；
 - 关联指标：热降频发生时间点、降级触发次数——性能预算要按"热稳态"而不是"冷机首次"设定。
 
@@ -222,7 +225,7 @@ JPEG 属于 **stalling stream**：编码占 ISP/编码器资源，与预览流�
 | 高热 | 关效果、降预览分辨率、禁高帧率 |
 | 临界 | 提示用户、限制录像时长 |
 
-原则：降级要**可感知地告知**且**可恢复**（降温后逐级升回），避免反复横跳（滞回区间）。
+原则：降级要**可感知地告知**且**可恢复**（降温后逐级升回），避免反复横跳（滞回区间）。工程接入用系统 Thermal API（`PowerManager` 热状态监听与 `getThermalHeadroom` 预测，见 Q40），不要自己拿温度传感器读数猜档位。
 
 ### Q28. 长时间预览/录像的功耗怎么优化？ ★★★
 
@@ -295,6 +298,118 @@ CI 上跑脚本化用例（Q31），对每个提交/每日报对比基线：首�
 
 答题结构：**定义指标（Q1-Q3）→ 建测量（埋点+trace+实验室脚本）→ 定预算（各指标红线，按机型分档）→ 做防退化（CI 回归+线上监控告警）→ 持续优化（按数据排优先级）**。加分点：提到预算要随硬件代次演进、暗光/热稳态等"特殊态"单独建基线、指标定义文档化（团队对齐）。
 
+## 九、扩展专题：公开资料与行业实践
+
+> 本板块内容来自仓库之外的公开资料（Android 官方文档、androidx 库、Perfetto/Play Console 文档、行业通行实践），是对一~八板块的补充。
+
+### Q37. 相机行业常用的启动/延迟 KPI 术语有哪些？ ★★
+
+相机团队与 OEM 评测通行的指标口径（行业术语，非 Android 官方定义）：
+
+| 术语 | 含义 |
+|---|---|
+| TTFF（Time to First Frame） | 相机启动到预览首帧，≈ 本文档的"首帧时间" |
+| Time to First Shot | 启动到**第一张照片可拍出**（含 3A 就绪），比 TTFF 更苛刻 |
+| Shot-to-Shot | 连续两张拍照之间的最短可接受间隔（含编码落盘） |
+| Shutter Lag | 按快门到曝光（本文档"快门延迟"） |
+| Capture-to-Display / Motion-to-Photon | 场景变化到屏幕呈现的端到端延迟（后者借自 AR 领域），见 Q39 |
+
+答题加分点：知道这些口径并指出"面试时先和对方对齐指标定义，因为各家 TTFF 的起止点不一样"。
+
+### Q38. 不用 Perfetto，App 内怎么做帧指标监控？FrameMetrics / JankStats ★★★
+
+两条官方路线（公开 API/库）：
+
+1. **`Window.OnFrameMetricsAvailableListener`**（API 24+）：系统按帧回调 `FrameMetrics`，可读 `TOTAL_DURATION`、`LAYOUT_MEASURE_DURATION`、`DRAW_DURATION`、`SWAP_BUFFERS_DURATION` 等分段耗时——正是 trace 里 doFrame 内部各阶段的程序化版本，适合线上采集帧耗时分布；
+2. **androidx `JankStats`**（androidx.metrics 库）：在 FrameMetrics/Choreographer 之上封装，输出每帧 `FrameData(duration, isJank)` 与聚合统计，可自定义 jank 阈值（如 2 倍刷新周期）、挂 `OnFrameListener` 做线上上报——官方定位就是"生产环境的 jank 监控"。
+
+相机 App 的用法：预览期只统计 UI 帧（滤镜页面/设置页），**预览画面本身不走 View 渲染**（SurfaceView 直通），所以 JankStats 反映的是相机 App 的 UI 卡顿而非相机出帧——两者要分开看（相机出帧用 `onCaptureStarted` 间隔统计，见 Q4）。
+
+### Q39. 预览的端到端延迟（capture-to-display）怎么测？ ★★★
+
+三层方法（由粗到精）：
+
+1. **时间戳差值法（App 内可做）**：`SurfaceTexture.OnFrameAvailableListener` 拿到的 `SurfaceTexture.timestamp()` 是相机帧的传感器时间戳，与 `System.nanoTime()`（`SENSOR_INFO_TIMESTAMP_SOURCE=REALTIME` 时同基准）相减得到"曝光→App 可见"的管线延迟；再叠加合成/送显约 1~2 帧；
+2. **高速摄像法（实验室）**：240fps+ 慢动作相机同时拍"被摄物运动"与"手机屏幕"，逐帧比对物像与屏像的相位差，除以帧间隔得 motion-to-photon 延迟；LED 闪光灯触发场景同理；
+3. **FrameTimeline/呈现栅栏（系统侧）**：`actual_frame_timeline_slice` 的 `presented` 时间戳与期望呈现时间的差值，作为线上/实验室的权威口径。
+
+意义：滤镜链、TextureView、GL 后处理都会增加 capture-to-display 延迟，直播/扫码场景对该指标敏感。
+
+### Q40. Android 的 Thermal API 怎么接入相机降级？ ★★★
+
+官方公开接口（替代"读温度传感器猜档位"）：
+
+- `PowerManager.addThermalStatusListener(executor, listener)`（API 29+）：热状态回调，档位 `THERMAL_STATUS_NONE → LIGHT → MODERATE → SEVERE → CRITICAL → EMERGENCY → SHUTDOWN`；
+- `PowerManager.getThermalHeadroom(forecastSeconds)`（API 30+）：预测"forecastSeconds 秒后"的热余量（0~1+），可提前降级而不是等 SEVERE 才反应——相机长录场景用"预测值 + 状态回调"双信号；
+- 接入模式：状态变化映射到 Q27 的降级矩阵（LIGHT 降帧率 → MODERATE 关滤镜 → SEVERE 降分辨率/禁录像），恢复用滞回（降一档容易、升一档谨慎）；
+- 注意：档位由系统按整机状态判定，相机不一定是最热源——降级了相机还热，要反馈系统侧（其它 App/充电）。
+
+### Q41. 相机功耗测量的工具链有哪些？怎么选？ ★★★
+
+| 工具 | 层级 | 用法与适用 |
+|---|---|---|
+| `adb shell dumpsys batterystats` + Battery Historian | 系统/软件 | 固定脚本跑完导出，看耗电归因（wakelock/传感器/屏幕/CPU 频率）、Camera 使用时段；适合对比版本间差异 |
+| Android Studio Energy Profiler | 开发期 | 可视化 CPU/网络/定位耗电事件，定位"谁在耗电"快速验证 |
+| Perfetto `power.rails` 数据源 | 硬件级 | **部分设备**（如 Pixel）可采实际电流轨（VDD 等），per 硬件块的真功耗；配合 camera track 做"哪段管线耗电"归因 |
+| SoC 厂商工具（如 Snapdragon Profiler 等） | 硬件级 | CPU/GPU/DDR 频率与功耗联动分析，平台调优常用 |
+| Monsoon 等外接功耗仪 | 物理级 | 金标准：直接测整机电流，实验室基准与标定用 |
+
+工程建议：日常回归用 batterystats（可脚本化），深度归因用 power rails/厂商工具，发布前基准用外接功耗仪标定一次。
+
+### Q42. CameraX 有哪些影响性能的配置？ ★★
+
+基于 androidx 公开文档/最佳实践：
+
+- **`PreviewView` 的显示模式**：`PerformanceMode.PERFORMANCE_MODE`（默认）优先 SurfaceView 零拷贝；`COMPATIBLE_MODE` 用 TextureView（兼容动画/变换，代价是延迟与功耗）；新版本可直接控制 implementationMode（SurfaceView/TextureView，以所用版本文档为准）；
+- **`ImageAnalysis` 背压策略**：`STRATEGY_KEEP_ONLY_LATEST`（丢旧帧，实时分析首选）vs `STRATEGY_BLOCK_PRODUCER`（保帧，积压风险）——分析消费慢时选错会拖垮整条链；
+- **分辨率**：`ResolutionSelector` 把分析流压到最小可用（640 级），不要默认分辨率起步；
+- **`Camera2Interop` 陷阱**：往预览请求塞 STILL_CAPTURE 级参数（如高质量降噪）会拉低帧率；跨 interop 改动要在真机矩阵验证（OEM 行为差异）；
+- 升级注意：CameraX 各版本对分辨率协商与扩展（Extensions）的行为有变化，升级后要跑性能回归。
+
+### Q43. 长时间录像的资源纪律是什么？ ★★★
+
+公开实践汇总：
+
+1. **前台服务 + wake lock**：Android 14+ 必须声明 `foregroundServiceType="camera"`（+ `mediaPlayback` 按需）并申请对应权限；`PARTIAL_WAKE_LOCK` 保持 CPU，录像结束必须释放（Vitals 监控 wake lock 滥用）；
+2. **编码器**：硬编（surface 输入）+ 合理码控（VBR/码率上限），热降级时主动降码率/分辨率而不是等编码器丢帧；
+3. **存储**：写盘用独立线程 + 合理缓冲，避免写盘阻塞帧消费（D 状态拖垮整链，见 Q22/Q24）；满盘/慢速存储要有预判（剩余空间检查）；
+4. **热联动**：编码器是发热大户，接 Q40 的热信号提前降档；
+5. **后台切前台的连续性**：录像中切后台（画中画/分屏）时保持服务，不要因生命周期误停录像。
+
+### Q44. Android Vitals / Play 对相机 App 有哪些性能约束？ ★★
+
+Play Console 核心行为指标（公开定义）：
+
+- **Slow frames**：单帧渲染 >16ms 的占比（约一个刷新周期）；
+- **Frozen frames**：单帧 >700ms（用户感知"冻住"）；
+- **用户感知 ANR 率 / 崩溃率**：前台 ANR 对话框与崩溃的会话占比，超阈值影响商店推荐（具体百分比阈值以 Play Console 当前公布为准，会调整）；
+- **Wake lock 滥用**：部分唤醒锁持有超时会被标记。
+
+对相机的映射：相机打开路径的卡顿会直接推高 slow/frozen frames 与 ANR 率（主线程等相机回调是最常见来源，见 Q29）；录像 wake lock 不释放会被标记。建议把 Vitals 阈值当作**外部红线**纳入 Q32 的线上监控，而不是只看自家埋点。
+
+### Q45. 录像性能的指标与优化清单？ ★★★
+
+指标：起录延迟（点录制→首帧视频入码）、录制帧率稳定性（p95 帧间隔）、丢帧数、音画同步偏移（ms）、热稳态下的码率/帧率衰减、录像中拍照的干扰（掉帧/音画跳变）。
+
+优化清单：
+
+- 起录：编码器预热（进入相机页就初始化 MediaCodec 等待 surface）、首帧等待策略（起录瞬间允许丢帧不允许花屏）；
+- 稳定：帧率锁定（`AE_TARGET_FPS_RANGE` 下限）、预览/录制流分担（录制流 PRIV 直通编码器，不过 App 手）；
+- 音画：音频/视频时间戳同基准（`SENSOR_INFO_TIMESTAMP_SOURCE=REALTIME` 时与 monotonic 对齐），muxer 起点取首帧最小 PTS；
+- 资源：硬编 + 码控自适应；录像中拍照用 VIDEO_SNAPSHOT 模板/独立低分辨率流，避免大 JPEG 挤占带宽；
+- 热：按 Q40 预测提前降码率（用户对码率下降的感知 < 对掉帧的感知）。
+
+### Q46. 怎么用 Macrobenchmark 给相机 App 做基准测试？ ★★★
+
+ androidx 官方基准库的公开能力：
+
+- **`StartupTimingMetric`**：冷/温启动的 TTID/TTFD（初始/完整显示），直接对应相机"首帧"口径的一部分（完整首帧还要叠加相机埋点）；
+- **`FrameTimingMetric`**：滚动/动画期间的帧耗时分布（p50/p90/p95/p99），适合衡量相机设置页、相册页的流畅性；
+- 用法：`@BenchmarkMode` 跑固定 uiautomator 脚本（进相机→切模式→录像 30s→退出），非 debuggable、release 优化构建（`benchmark` buildType），多次迭代取分布；
+- 与 Q31/Q33 的关系：Macrobenchmark 做实验室/CI 的**可复现测量**，线上监控（Q32）做真实环境采样，两者互补构成完整证据链；
+- 限制：对"相机出帧速率"这类非 View 渲染指标没有直接 metric，需在 demo 层（被测 App 内）埋点导出，或在脚本里读 dumpsys 计数。
+
 ---
 
-> 配套阅读：《Android_Camera_Trace分析文档》（数据采集与归因）、《Android_Camera_算法集成文档》第 2/4 章（预览预算与内存）、《Android_Camera_APP_面试题》Q36/Q57/Q65、《Android_Camera_系统面试题》Q40、《Android_Camera_Trace面试题》（工具细节）、《Android_通用面试题》Q41（Baseline Profile 实操）。
+> 配套阅读（仓库内）：《Android_Camera_Trace分析文档》（数据采集与归因）、《Android_Camera_算法集成文档》第 2/4 章（预览预算与内存）、《Android_Camera_APP_面试题》Q36/Q57/Q65、《Android_Camera_系统面试题》Q40、《Android_Camera_Trace面试题》（工具细节）、《Android_通用面试题》Q41（Baseline Profile 实操）。
+> 配套阅读（仓库外·公开资料）：Android 开发者文档（[JankStats](https://developer.android.com/topic/performance/vitals/jank-stats)、[FrameMetrics](https://developer.android.com/reference/android/view/FrameMetrics)、[Thermal API](https://developer.android.com/about/versions/11/features#thermal)、[Android Vitals](https://developer.android.com/topic/performance/vitals)、[Macrobenchmark](https://developer.android.com/macrobenchmark)、[Camera 性能建议](https://developer.android.com/media/camera)）、androidx [camera-view](https://developer.android.com/reference/androidx/camera/view/PreviewView) 与 [metrics](https://developer.android.com/jetpack/androidx/releases/metrics) 库、[Perfetto 文档](https://perfetto.dev/docs/)、Play Console 行为阈值页。
