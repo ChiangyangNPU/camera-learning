@@ -1,6 +1,6 @@
 # Android Camera 源码链路学习文档（framework / CameraService）
 
-> 本文档是相机学习系列的第三份：前两份分别讲机制（《Android_Camera_学习文档.md》）与接口（《Android_Camera_接口文档.md》），本份深入 **framework 与 CameraService 的源码实现**，把"一次 openCamera → 建会话 → 下发请求 → 收回结果 → 出错恢复"的完整调用链从 AOSP main 分支源码中逐段讲清。
+> 本文档是相机学习系列的第三份：前两份分别讲机制（《Android_Camera_学习文档.md》）与接口（《Android_Camera_接口文档.md》），本份深入 **framework 与 CameraService 的源码实现**，把"一次 openCamera → 建会话 → 下发请求 → 收回结果 → 出错恢复 → 缓冲区上屏"的完整调用链从 AOSP 源码与官方文档中逐段讲清。
 >
 > 官方没有专门讲述 CameraService 内部实现的文档，本文全部结论直接出自 AOSP 源码（main 分支，2026-09 时点），每节附 googlesource 来源链接与行号，函数名均经源码核对。所有流程图/时序图使用 Mermaid 语法。
 
@@ -12,6 +12,7 @@
 | 第 2 章 openCamera 完整调用链 | Java 层 openCamera → connectDevice → 权限/优先级仲裁与驱逐 → CameraDeviceClient/Camera3Device 创建 → HAL open | CameraManager.java、CameraService.cpp、ClientManager.h、CameraDeviceImpl.java |
 | 第 3 章 createCaptureSession 与请求提交 | 会话创建、流构建与 configureStreams、请求下发、RequestThread 线程模型 | CameraDeviceImpl.java、CameraDeviceClient.cpp、Camera3Device.cpp |
 | 第 4 章 结果返回、缓冲区与错误恢复 | shutter/结果双通道、in-flight 匹配、partial result、缓冲区全生命周期、错误分类与恢复 | Camera3OutputUtils.cpp、InFlightRequest.h、AidlCamera3Device.cpp |
+| 第 5 章 从 queueBuffer 到屏幕：BufferQueue 与显示链路 | BufferQueue/gralloc 官方机制、BLASTBufferQueue 源码、SurfaceFlinger/HWC 合成分工、SurfaceTexture 双队列、VSync 端到端时序 | BLASTBufferQueue.h、AOSP 图形官方文档 |
 
 ## main 分支与旧资料的主要差异（阅读提示）
 
@@ -25,7 +26,7 @@
 ## 建议阅读路径
 
 - 第一次读：按章顺序通读，重点消化第 1 章的三进程模型和第 2 章 openCamera 全链；
-- 排障查阅：第 4 章的 in-flight 匹配与错误分类流程图适合对照 dumpsys/log 定位问题；
+- 排障查阅：第 4 章的 in-flight 匹配与错误分类流程图适合对照 dumpsys/log 定位问题；预览上屏/卡顿问题查第 5 章；
 - 与前两份文档配合：遇到接口签名细节查《接口文档》第 1/4 章，遇到 HAL 协议语义查《学习文档》第 1~3 章。
 
 ---

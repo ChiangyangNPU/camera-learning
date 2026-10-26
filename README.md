@@ -10,7 +10,7 @@
 flowchart TB
     subgraph AND["Android 学习闭环"]
         A1["学习文档<br/>框架机制（7 章）"] --> A2["接口文档<br/>API 速查（5 章）"]
-        A2 --> A3["源码链路文档<br/>CameraService（4 章）"]
+        A2 --> A3["源码链路文档<br/>CameraService + 显示链路（5 章）"]
         A3 --> A4["ISP/3A 文档<br/>成像与平台（4 章）"]
         A4 --> A5["算法集成文档<br/>预览/拍照链路（5 章）"]
         A3 --> A5
@@ -59,7 +59,7 @@ camera-learning/
 ├── Android/                          # Android 相机学习资料
 │   ├── Android_Camera_学习文档.md     # ★ 主文档：AOSP Camera 框架与机制（7 章）
 │   ├── Android_Camera_接口文档.md     # ★ 主文档：应用层 + HAL 层接口速查（5 章）
-│   ├── Android_Camera_源码链路文档.md # ★ 主文档：framework/CameraService 源码实现（4 章）
+│   ├── Android_Camera_源码链路文档.md # ★ 主文档：framework/CameraService 源码实现（5 章）
 │   ├── Android_Camera_ISP_3A文档.md  # ★ 主文档：sensor/ISP 管线 + 3A 算法 + 高通/MTK 平台 HAL（4 章）
 │   ├── Android_Camera_Trace分析文档.md # ★ 性能分析：Perfetto trace 基础 + 相机启动/拍照实战（6 章）
 │   ├── Android_Camera_性能分析文档.md # ★ 性能总纲：指标/度量/分域优化/线上体系，含官方与业界实践（8 章）
@@ -74,7 +74,7 @@ camera-learning/
 │   │   └── Android_通用面试题.md         # Android 通用八股（69 题，12 大板块）
 │   ├── aosp_camera_docs/             # 学习文档的分章源文件（chapter01~07）
 │   ├── api_docs/                     # 接口文档的分章源文件（ch1~ch5）
-│   ├── src_docs/                     # 源码链路文档的分章源文件（ch1~ch4）
+│   ├── src_docs/                     # 源码链路文档的分章源文件（ch1~ch5）
 │   ├── isp_docs/                     # ISP/3A 文档的分章源文件（ch1~ch4）
 │   ├── trace_docs/                   # Trace 分析文档的分章源文件（ch1~ch6）
 │   ├── perf_docs/                    # 性能分析文档的分章源文件（ch1~ch8）
@@ -95,7 +95,7 @@ camera-learning/
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------- |
 | [Android\_Camera\_学习文档.md](Android/Android_Camera_学习文档.md)          | 依据 AOSP 官方文档"摄像头"板块全部 31 个页面整理：概览与架构、核心概念（3A/元数据/流配置）、性能优化、版本控制、18 个相机功能专题                                       | 系统学习 Camera 框架机制                |
 | [Android\_Camera\_接口文档.md](Android/Android_Camera_接口文档.md)          | Camera2 / CameraX / Camera1 / NDK 应用层接口速查 + HAL 层（camera3.h、AIDL HAL、camera\_metadata）接口与元数据体系                   | 写代码时查方法、查接口                     |
-| [Android\_Camera\_源码链路文档.md](Android/Android_Camera_源码链路文档.md)      | framework/CameraService 源码实现：三进程模型、openCamera 全链、会话与请求下发、结果回程与错误恢复（AOSP main 分支源码逐段核对，Mermaid 流程图/时序图）           | 框架开发、面试准备、问题排查                  |
+| [Android\_Camera\_源码链路文档.md](Android/Android_Camera_源码链路文档.md)      | framework/CameraService 源码实现：三进程模型、openCamera 全链、会话与请求下发、结果回程与错误恢复、缓冲区到屏幕的显示链路（BufferQueue/BLAST/SF/HWC，AOSP main 分支源码与官方图形文档逐段核对，Mermaid 流程图/时序图）           | 框架开发、面试准备、问题排查                  |
 | [Android\_Camera\_ISP\_3A文档.md](Android/Android_Camera_ISP_3A文档.md) | Sensor 成像原理、ISP 处理管线与统计模块、3A 算法（含 libcamera 开源实现逐函数分析）、高通 CAMX/Chi-CDK 与 MTK mtkcam 平台 HAL 架构（材料按 A/B/C 可信度分层标注） | ISP/3A 入门、平台 HAL 调研、tuning 团队衔接 |
 
 建议阅读顺序：先读学习文档第 1 章建立整体图景 → 第 2 章核心机制 → 接口文档第 1/4 章对照应用层与 HAL 层的方法表 → 源码链路文档打通三层调用链 → ISP/3A 文档下沉到硬件与算法 → 其余章节按需查阅。
@@ -201,3 +201,4 @@ iOS 系列文档特性：
 * 2026-10-25：新增《Android\_Camera\_OfflineSession文档》（离线会话官方源码级专题，单文件 9 章）：App API（API 30：switchToOffline/supportsOfflineProcessing/回调状态机/Java 示例）、Framework 原生层（CameraDeviceClient/Camera3OfflineSession/CameraOfflineSessionClient）、HAL AIDL 协议逐条解析（三个 parcelable、HalStream.supportOffline、离线期间保证流组合）、全链路时序图与 17 条约束速查表，关键语义全部附 AOSP/官方链接；修正《算法集成文档》3.5 节"App 侧无直接 API"的错误表述（聚合文档与 algo\_docs/ch3 同步），系统题 Q12、APP 题 Q46 补充交叉引用，README 关系图谱新增 A8 节点。
 * 2026-10-25：《Android\_Camera\_OfflineSession文档》第 3 章扩充完整 App 使用示例：新增 3.6 App 视角流程图（能力检查→配流→流级查询→连拍→切换决策→离线收尾/降级路径）、3.7 App 级时序图、3.8 两种连拍形态与离线会话兼容性说明（非重复 `capture()` 可迁移 / `setRepeatingRequest` 会被 abort）与完整 Java 示例（OfflineBurstCamera：打开相机→配流→预览→连拍→switchToOffline→离线回调→ImageReader 持续消费→资源收尾，minSdk 30）。
 * 2026-10-26：《Android\_Camera\_Trace分析文档》补充消费端地图：ch1 新增 1.7"相机帧在 trace 上流向哪里"（SurfaceView 直通/SurfaceTexture GL 中转/ImageReader/录制 Surface 四类消费端的帧流向、观察 track、卡顿特征与背压传导对照表 + GL 中转背压时序图，原小结顺延为 1.8）；ch4 的 4.6 扩写为 ImageReader 背压传导链（`maxImages` 语义、忘 close/同步重活的传导链图、trace 判读三要点）并新增速查表条目"越拍越慢"；00\_intro 结构表与文档关系补充对性能分析文档 4.4/接口文档 1.8/算法集成文档第 2 章的交叉引用。
+* 2026-10-26：《Android\_Camera\_源码链路文档》新增第 5 章"从 queueBuffer 到屏幕：BufferQueue 与显示链路"（967 → 1129 行，4 章 → 5 章）：BufferQueue 官方模型与生命周期/gralloc 分配跨进程共享、BLASTBufferQueue 逐成员源码分析（one-way 事务/mMaxAcquiredBuffers=1/releaseBufferCallback 闭环/transactionCommittedCallback 与 FrameTimeline 衔接/Android Studio profiler 计数器）、SurfaceFlinger vsync 工作循环与 HWC/客户端合成分工及预旋转、SurfaceTexture 双队列与 TextureView、VSync 相位差端到端时序；A 层 = AOSP 图形官方文档三页 + frameworks/native BLASTBufferQueue.h（main 分支核对）；README 关系与 Trace 文档交叉引用同步更新。

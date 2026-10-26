@@ -20,7 +20,7 @@
 
 - 启动/拍照的机制与优化清单见《Android_Camera_APP_面试题》Q65（首帧启动）与 Q36/Q57（性能与拍照流程）；
 - 配套题集：《Android_Camera_Trace面试题》（26 题，覆盖 trace 基础、抓取、启动/拍照分析、方法论与实战），用于自测与面试准备；
-- 请求/结果的框架内部链路见《Android_Camera_源码链路文档》第 3~4 章（RequestThread、in-flight、结果回程）；
+- 请求/结果的框架内部链路见《Android_Camera_源码链路文档》第 3~4 章（RequestThread、in-flight、结果回程）；queueBuffer 之后到屏幕的显示链路（BufferQueue/BLAST/SF/HWC）见其第 5 章；
 - HAL/3A 的元数据语义见《Android_Camera_ISP_3A文档》第 2~3 章；
 - 预览消费端的**选型对比**（SurfaceView/TextureView/GL 中转/PreviewView 模式）见《Android_Camera_性能分析文档》4.4；ImageReader 接口语义见《Android_Camera_接口文档》1.8；GL 中转的完整实现见《Android_Camera_算法集成文档》第 2 章（本篇只讲 trace 判读视角）；
 - trace 里的"谁等谁"可与《Android_通用面试题》Handler/Binder/渲染相关题目互相印证。
