@@ -80,11 +80,23 @@ trace 上的关键观察点：
   - 线程 D 状态（Uninterruptible Sleep）→ 写盘 IO（尤其低端机/满盘）；
   - 编码器 track 满载 → 硬件编码资源竞争（多摄/录像同开时）。
 
-## 4.6 ImageReader 与缓冲
+## 4.6 ImageReader 与缓冲（背压传导链）
 
-- `onImageAvailable` 到 `Image.close()` 之间的时长要短；trace 上若消费线程长期不 Running 或消费太慢，会导致缓冲耗尽、后续帧延迟（APP 题库 Q14/Q35）；
-- 高频问题：把缩略图/大图解码放在 listener 线程同步做、忘记 close、maxImages 过大；
-- trace 观察：ImageReader 消费线程的 Running 时长 + 相机 buffer 池的空闲事件（`camera_memory`）。
+ImageReader 是**有界队列**：`newInstance(w, h, format, maxImages)` 的 `maxImages` 限制"同时被应用持有的 Image 数"（接口语义见仓库文档：Android/Android_Camera_接口文档.md 第 1.8 节）；拿走不 `close()`，缓冲就不归还相机。消费慢不是孤立问题，而是沿链条反向传导（第 1 章 1.7 消费端地图的 ImageReader 行）：
+
+```mermaid
+flowchart TD
+    A["onImageAvailable 回调线程<br/>处理 Image"] -->|"忘 close / 在回调线程<br/>同步做重活（解码/保存/算法）"| B["被持有 Image 数达 maxImages"]
+    B --> C["acquire 拿不到新 Image<br/>reader 队列满"]
+    C --> D["相机缓冲池被占满<br/>HAL 等空缓冲"]
+    D --> E["请求积压/停发<br/>出帧间隔拉长、结果延迟增大"]
+```
+
+trace 判读要点（APP 题库 Q14/Q35）：
+
+- **消费线程状态**：`onImageAvailable` 回调线程（自建 Handler 线程）长期不 Running → 下游线程池排队；单帧长 slice → 在 listener 线程同步做了重活（典型：JPEG 解码、大图保存、算法推理）——处理移出回调线程、消费后立即 `close()`；
+- **相机侧旁证**：结果回程间隔异常拉大 + HAL 无异常打点 + 预览 track 空档 + `camera_memory` 事件密集（缓冲池反复分配）——组合出现时优先怀疑 reader 背压，而不是急着怪 HAL；
+- **`maxImages` 取值**：过大占内存（YUV/RAW 大帧尤甚）且**掩盖消费慢**（积压到深处才暴露）；过小直接丢帧。通行做法：最小够用 + 消费端异步化。
 
 ## 4.7 常见问题模式速查
 
@@ -96,12 +108,14 @@ trace 上的关键观察点：
 | 图像延迟固定偏大 | STILL_CAPTURE 结果总在 N 帧后 | pipeline depth 下限 | 接受预算或换 ZSL 模板 |
 | 尾段慢且线程 D 状态 | 写盘 IO 等待、文件系统忙 | 存储 IO | 异步写、缓存目录、降低编码尺寸 |
 | 连拍间隔大 | 每张都有完整 precapture+编码 | 串行链路 | 锁 3A 连拍、队列化拍照请求 |
+| 越拍越慢、相机侧无异常 | 回调线程 Sleeping/长 slice；结果间隔同步拉大 | ImageReader 背压（忘 close/同步重活，见 4.6） | 消费后立即 close、处理异步化 |
 
 ## 4.8 本章小结
 
 - 拍照延迟要拆成"快门→曝光→结果→编码→落盘"五段，每段在 trace 上有独立证据；
 - precapture 与 pipeline depth 是**协议决定的下限**，优化空间在于跳过不必要环节与并行化；
 - 编码/落盘尾段常被忽视，但用户感知的是"出图"，必须纳入预算；
+- 消费端（ImageReader）背压会伪装成"相机侧异常"——先查消费线程、再查 HAL（1.7 消费端地图 + 4.6 传导链）；
 - 相机 HAL 内部无打点时，用帧号节奏、结果回程间隔与线程状态推断，结论标注置信度。
 
 下一章：把方法沉淀成可复用的分析流程。

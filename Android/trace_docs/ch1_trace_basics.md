@@ -186,12 +186,48 @@ doFrame 本身很长的常见原因，按线程状态分类（对应 1.4 的状�
 
 > 注意：相机 HAL 的大部分内部行为**没有统一的 trace 打点**（厂商可选），所以相机 trace 分析经常是"框架可见 + HAL 旁证"的组合推断，结论要标注置信度（与仓库 A/B/C 分层一致的思路）。
 
-## 1.7 本章小结
+## 1.7 消费端地图：相机帧在 trace 上流向哪里
+
+> 来源：A 层——[SurfaceView](https://developer.android.google.cn/reference/android/view/SurfaceView)、[SurfaceTexture](https://developer.android.google.cn/reference/android/graphics/SurfaceTexture)、[ImageReader](https://developer.android.google.cn/reference/android/media/ImageReader) 官方参考（本文摘译；接口细节与 `maxImages` 语义另见仓库文档：Android/Android_Camera_接口文档.md 第 1.8 节）；B 层——BufferQueue 背压与各消费端的 trace 判读为通行工程知识。**选型对比**（何时用哪个、性能收益）见仓库文档：Android/Android_Camera_性能分析文档.md 第 4.4 节，本节只回答"**这一帧由谁消费、去哪个 track 找**"。
+
+1.5 节讲了 UI 渲染的帧模型（Choreographer/RenderThread/SF），但**相机预览帧不一定经过那套管线**——取决于输出 Surface 的类型。读预览/拍照卡顿的 trace 前，先对照这张地图：
+
+| 消费端 | 帧数据流向（进程视角） | trace 上看哪个 track | 消费慢的 trace 特征 | 反向传导到相机侧 |
+|---|---|---|---|---|
+| SurfaceView（直通预览） | HAL → BufferQueue → **SF 合成**（独立图层，可走 HWC 硬件叠层） | SF 合成 track + FrameTimeline；App 的 UI 线程/RenderThread **不出预览帧** | SF 侧 jank/合成超时；"App 全空闲却预览卡" | BufferQueue 满 → HAL 等空缓冲 → 出帧间隔拉长 |
+| SurfaceTexture（GL 中转） | HAL → BufferQueue → **App 内 GL/EGL 线程** `updateTexImage()` 消费 → 再渲染到显示 Surface | App GL 线程逐帧 slice + `onFrameAvailable` 回调节奏 | GL 线程 Running 拉长、回调积压 | 消费不过来 → BufferQueue 背压 → 相机停帧/丢帧 |
+| ImageReader（YUV/RAW/拍照帧） | HAL → reader 有界队列（`maxImages`）→ `onImageAvailable` 回调线程 | 回调线程（自建 Handler 线程）Running 时长 + `camera_memory` | 回调线程 Sleeping（下游排队）或单帧长 slice（同步做重活） | `Image` 不 close → 缓冲池耗尽 → 请求排队、结果延迟增大（详见 4.6） |
+| 录制 Surface（MediaCodec input） | HAL → 编码器 input surface → codec 输出 | 编码器 track（`camera`/`video` category 旁证） | codec 满载、输出缓冲阻塞 | 编码背压 → 录像流停帧（与 4.5 节尾段同理） |
+
+三个最常用的判读结论（B 层归纳）：
+
+- **"预览卡但相机帧率正常"——先看消费端**。GL 中转路径去 App GL 线程找长 slice；SurfaceView 直通去 SF/FrameTimeline 找 jank。别在 UI 线程的 `doFrame` 里找预览帧——直通路径下它不在那；
+- **JankStats/FrameMetrics 只覆盖 View 渲染**：SurfaceView 直通与 ImageReader 帧都不经过 View 管线，View 层帧监控天然看不见——这是性能分析文档 2.3 节"监控盲区"的机制原因；
+- **背压是链条**：任何消费端变慢都会沿 BufferQueue 反向传导为相机侧出帧异常。判读顺序：先看消费线程，再看相机出帧节奏——顺序反了会把"消费慢"误判成"HAL 慢"。
+
+以最典型的 GL 中转背压为例（SurfaceTexture 路径，逐帧闭环）：
+
+```mermaid
+sequenceDiagram
+    participant HAL as 相机 HAL
+    participant Q as BufferQueue
+    participant GL as App GL 线程
+    participant DISP as 显示（SF）
+    HAL->>Q: 出帧（占一个 slot）
+    Q->>GL: onFrameAvailable
+    GL->>GL: updateTexImage() 消费<br/>+ 算法/滤镜渲染
+    Note over GL: 此段 Running 时长 = 每帧预算<br/>拉长 → slot 积压
+    GL->>DISP: 渲染结果送显示
+    Q-->>HAL: slot 归还（消费完成后）
+    Note over Q,HAL: slot 不还 → HAL 等缓冲<br/>相机出帧间隔被拉长
+```
+
+## 1.8 本章小结
 
 读懂 trace 需要三层能力：
 
 1. **工具层**：知道怎么抓、怎么开（第 2 章）；
 2. **语言层**：能用 slice/状态/计数器/关联回答"时间花在哪、在等谁"（本章）；
-3. **领域层**：知道相机启动/拍照链路上"应该出现什么"，才能发现异常（第 3\~4 章）。
+3. **领域层**：知道相机启动/拍照链路上"应该出现什么"，才能发现异常（第 3\~4 章；预览/拍照帧出现在哪条 track 见 1.7 消费端地图）。
 
 下一章：抓取配置与工具链。
