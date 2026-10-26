@@ -20,7 +20,7 @@
 
 - 启动/拍照的机制与优化清单见《Android_Camera_APP_面试题》Q65（首帧启动）与 Q36/Q57（性能与拍照流程）；
 - 配套题集：《Android_Camera_Trace面试题》（26 题，覆盖 trace 基础、抓取、启动/拍照分析、方法论与实战），用于自测与面试准备；
-- 请求/结果的框架内部链路见《Android_Camera_源码链路文档》第 3~4 章（RequestThread、in-flight、结果回程）；
+- 请求/结果的框架内部链路见《Android_Camera_源码链路文档》第 3~4 章（RequestThread、in-flight、结果回程）；queueBuffer 之后到屏幕的显示链路（BufferQueue/BLAST/SF/HWC）见其第 5 章；
 - HAL/3A 的元数据语义见《Android_Camera_ISP_3A文档》第 2~3 章；
 - 预览消费端的**选型对比**（SurfaceView/TextureView/GL 中转/PreviewView 模式）见《Android_Camera_性能分析文档》4.4；ImageReader 接口语义见《Android_Camera_接口文档》1.8；GL 中转的完整实现见《Android_Camera_算法集成文档》第 2 章（本篇只讲 trace 判读视角）；
 - trace 里的"谁等谁"可与《Android_通用面试题》Handler/Binder/渲染相关题目互相印证。
@@ -168,7 +168,7 @@ Choreographer 是**按 VSync 节拍调度 UI 工作的帧调度器**（每个有
 
 要点：
 
-* UI 工作被**对齐到 VSync**：一帧内的回调按上表顺序执行，这就是"16.6ms 帧预算"的调度载体（120Hz 下预算 8.3ms）；
+* UI 工作被**对齐到 VSync**：一帧内的回调按上表顺序执行，这就是"16.6ms 帧预算"的调度载体（120Hz 下预算 8.3ms）；硬件 vsync 只有一个，Choreographer 收到的是软件拆分后的 **VSYNC app 相位**（与 SurfaceFlinger 合成用的 SF_VSYNC 相位错开，实现"显示 N / 合成 N+1 / 渲染 N+2"流水线）——三相位结构见《Android_Camera_源码链路文档》5.4.3；
 * trace 上的 `Choreographer#doFrame` slice = 从 VSync 回调开始到本帧所有阶段回调结束的**墙钟时间**——不是 CPU 时间，包含被抢占与阻塞的等待（1.5.2）；
 * 主线程消息队列里的长任务不会缩短 doFrame，而是让**下一次 doFrame 开始得更晚**（两类问题要分开看）。
 

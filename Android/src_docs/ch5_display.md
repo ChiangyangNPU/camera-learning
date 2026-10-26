@@ -148,12 +148,36 @@ sequenceDiagram
     SF->>DIS: 合成 → present → 扫描
 ```
 
+### 5.4.3 三相位：一次上屏挂在两个 vsync 上（A 层）
+
+> 来源：A 层——[AOSP VSYNC 官方文档](https://source.android.google.cn/docs/core/graphics/implement-vsync?hl=zh-cn)（"VSYNC"，2026-10 抓取摘译）
+
+5.2/5.4.2 讲了"SF 在 vsync 边界 latch"，但硬件 vsync 只有**一个**——各组件到底挂在它的哪个位置？官方 VSYNC 页给出了完整答案：
+
+- **硬件 vsync 只有一个**："HWC 可生成 VSYNC 事件并通过回调将事件发送到 SurfaceFlinger"（`HW_VSYNC_0`，对应"屏幕显示新帧"的时刻）；
+- **软件拆成两路相位**：**DispSync** 是"一个软件锁相回路（PLL），它可以生成由 **Choreographer 和 SurfaceFlinger** 使用的 **VSYNC 和 SF_VSYNC 信号**"——以 HW_VSYNC_0 为参考、HWC 退出栅栏时间戳为反馈；SF 经 `setVsyncEnabled` 控制 HWC 的 vsync 生成，发现偏差时重新启用（这就是 trace 上见到软件 vsync/硬件 vsync 两种来源的原因）；
+- 两路信号的分工（官方原文）："**VSYNC**——应用读取输入内容并生成下一帧"（唤醒 Choreographer，即 Trace 文档 1.5.1 的 doFrame 节拍）；"**SF_VSYNC**——SurfaceFlinger 开始为下一帧进行合成"；
+- **偏移量**：两相位相对 HW_VSYNC_0 的纳秒偏移由 `VSYNC_EVENT_PHASE_OFFSET_NS` / `SF_VSYNC_EVENT_PHASE_OFFSET_NS` 配置（默认为零，"也可以为负值"）；
+- **为什么拆**（官方原文）：利用 VSYNC 偏移减少输入到屏幕的延迟——结果是"屏幕开始显示帧 N，而 SurfaceFlinger 开始为帧 N+1 合成窗口。应用……生成帧 N+2"，**显示 N / 合成 N+1 / 渲染 N+2 三件事同帧并行**；代价："VSYNC 偏移会缩短可用于应用和合成的时间，因此增加了出错几率"——FrameTimeline 里 App/SF 两侧的 deadline 正是从这套相位推导的（判读见仓库内文档：Android/Android_Camera_Trace分析文档.md 第 1.5 节）。
+
+```mermaid
+flowchart LR
+    subgraph T["同一帧时间轴（以 HW_VSYNC_0 为参考）"]
+        direction LR
+        H["HW_VSYNC_0<br/>屏幕开始显示帧 N"] -->|"VSYNC_EVENT_PHASE_OFFSET_NS"| A["VSYNC（app 相位）<br/>Choreographer doFrame<br/>渲染帧 N+2"]
+        H -->|"SF_VSYNC_EVENT_PHASE_OFFSET_NS"| S["SF_VSYNC<br/>latch + 合成帧 N+1"]
+    end
+    CAM["相机帧<br/>（异步，不对齐任何相位）"] -.->|"queueBuffer 落在任意缝隙<br/>下一个 SF_VSYNC 被 latch"| S
+```
+
+**相机的特殊位置**（本章综合）：预览链路里 UI 线程/RenderThread（VSYNC 相位）、SurfaceFlinger（SF_VSYNC 相位）都被软件 vsync 驱动，唯独相机是**不对齐任何相位的生产者**——曝光节奏由 `frameDuration` 决定（第 1 章），queueBuffer 可能落在任意两相位之间；它能赶上的最早合成时机就是**下一个 SF_VSYNC**——5.4.2"平均等 0.5~1 vsync"的机制出处即此。
+
 ---
 
 ## 5.5 本章小结
 
 - **一条 buffer 的完整旅行**：cameraserver `getBuffer` 出队（4.3）→ HAL 填充 → `queueBuffer` 入 BufferQueue（4.3 终点/本章起点）→ BLASTBufferQueue acquire 并转 Transaction → SF 在 vsync 边界 latch → HWC 判定叠层/GPU 合成 → present 上屏 → `releaseBufferCallback` 归还 → 缓冲回池可复用——frameNumber 贯穿元数据线，fence 贯穿缓冲线；
-- **三个角色各司其职**：BufferQueue 是生产者与消费者的解耦层（容量联合决定、gralloc 分配、句柄跨进程）；BLASTBufferQueue 是应用侧消费者代理（one-way 事务、在途 1 张、latch/present 时序回调）；SurfaceFlinger + HWC 是唯一合成者（vsync 驱动、逐层判定叠层 vs GPU）；
+- **三个角色各司其职**：BufferQueue 是生产者与消费者的解耦层（容量联合决定、gralloc 分配、句柄跨进程）；BLASTBufferQueue 是应用侧消费者代理（one-way 事务、在途 1 张、latch/present 时序回调）；SurfaceFlinger + HWC 是唯一合成者（vsync 三相位驱动，5.4.3；逐层判定叠层 vs GPU）；
 - **消费端不同，队列结构不同**：SurfaceView 一段队列；SurfaceTexture 两段（GL 中转）；TextureView 再叠 View 硬件层；ImageReader/编码器是另外的消费终点（机制同 BQ-1，判读见 Trace 文档 1.7）；
 - 与前三章合起来，"sensor → 屏幕"全链路在源码级闭环：请求下行（第 3 章）→ 结果/缓冲回程（第 4 章）→ 显示上屏（本章）。
 

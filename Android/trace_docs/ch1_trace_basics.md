@@ -131,7 +131,7 @@ Choreographer 是**按 VSync 节拍调度 UI 工作的帧调度器**（每个有
 
 要点：
 
-* UI 工作被**对齐到 VSync**：一帧内的回调按上表顺序执行，这就是"16.6ms 帧预算"的调度载体（120Hz 下预算 8.3ms）；
+* UI 工作被**对齐到 VSync**：一帧内的回调按上表顺序执行，这就是"16.6ms 帧预算"的调度载体（120Hz 下预算 8.3ms）；硬件 vsync 只有一个，Choreographer 收到的是软件拆分后的 **VSYNC app 相位**（与 SurfaceFlinger 合成用的 SF_VSYNC 相位错开，实现"显示 N / 合成 N+1 / 渲染 N+2"流水线）——三相位结构见《Android_Camera_源码链路文档》5.4.3；
 * trace 上的 `Choreographer#doFrame` slice = 从 VSync 回调开始到本帧所有阶段回调结束的**墙钟时间**——不是 CPU 时间，包含被抢占与阻塞的等待（1.5.2）；
 * 主线程消息队列里的长任务不会缩短 doFrame，而是让**下一次 doFrame 开始得更晚**（两类问题要分开看）。
 
