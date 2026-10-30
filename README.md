@@ -20,6 +20,7 @@ flowchart TB
         A5 --> A7
         A3 --> A8["OfflineSession 文档<br/>离线会话专题（官方源码级）"]
         A5 --> A8
+        A1 --> A9["开发知识文档<br/>通用开发体系（14 章）"]
     end
     subgraph IV["面试题集（按考点反查主文档）"]
         Q1["APP 面试题（65）"]
@@ -40,6 +41,7 @@ flowchart TB
     A8 -.->|"离线会话考点（Q12/Q46）"| Q2
     A6 -.->|"性能考点"| Q4
     A7 -.->|"性能体系考点"| Q6
+    A9 -.->|"通用考点（题/解对照）"| Q5
     A1 -.->|"通用底座"| Q5
     A1 <-->|"跨平台对照"| B1
     A2 <-->|"API 对照"| B2
@@ -48,7 +50,7 @@ flowchart TB
 
 读图方式：
 
-- **Android 主线**（实线）：框架机制 → API 速查 → 源码链路 → ISP/3A → 算法集成 → Trace 性能分析，前一份是后一份的基础；OfflineSession 文档是从源码链路与算法集成延伸出的**专题深潜**；
+- **Android 主线**（实线）：框架机制 → API 速查 → 源码链路 → ISP/3A → 算法集成 → Trace 性能分析，前一份是后一份的基础；OfflineSession 文档是从源码链路与算法集成延伸出的**专题深潜**，开发知识文档是从学习文档延伸出的**通用底座**；
 - **面试题集**（虚线）：按考点反查对应主文档，答案可逐层溯源；
 - **iOS 三份**（双向箭头）：与 Android 体系平行，章节按"架构/接口/ISP"一一对照阅读。
 
@@ -65,6 +67,7 @@ camera-learning/
 │   ├── Android_Camera_性能分析文档.md # ★ 性能总纲：指标/度量/分域优化/线上体系，含官方与业界实践（8 章）
 │   ├── Android_Camera_算法集成文档.md # ★ 算法工程：预览/拍照两条链路的算法集成与选型（5 章）
 │   ├── Android_Camera_OfflineSession文档.md # ★ 专题：离线会话三层官方语义（App/Service/HAL，API 30+，全链路时序与约束清单）
+│   ├── Android_开发知识文档.md        # ★ 通用底座：组件/IPC/Handler/View/Jetpack/协程/Compose/网络/存储/性能/稳定性/构建/安全/版本演进（14 章）
 │   ├── interview/                    # 面试题集（6 份）
 │   │   ├── Android_Camera_APP_面试题.md  # APP 层综合（65 题，★~★★★ 分级）
 │   │   ├── Android_Camera_系统面试题.md  # framework/HAL/ISP 系统向进阶（45 题）
@@ -79,6 +82,7 @@ camera-learning/
 │   ├── trace_docs/                   # Trace 分析文档的分章源文件（ch1~ch6）
 │   ├── perf_docs/                    # 性能分析文档的分章源文件（ch1~ch8）
 │   ├── algo_docs/                    # 算法集成文档的分章源文件（ch1~ch5）
+│   ├── dev_docs/                     # 开发知识文档的分章源文件（ch1~ch14 + 附录）
 │   └── images/                       # 文档配图（44 张，已本地化，可离线阅读）
 └── IOS/                              # iOS 相机学习资料
     ├── iOS_Camera_学习文档.md         # ★ 主文档：AVFoundation 架构与机制（9 章）
@@ -137,6 +141,12 @@ ISP/3A 文档额外特性：厂商闭源内容（CAMX/mtkcam 内部）按 **A（
 | 文档 | 内容 | 适用场景 |
 |---|---|---|
 | [Android_Camera_OfflineSession文档.md](Android/Android_Camera_OfflineSession文档.md) | 离线会话（Offline Session）官方源码级专题：问题定义与核心思想、版本与能力地图（App API 30 / HIDL 3.6 / AIDL HAL）、App 层 API 语义（switchToOffline、supportsOfflineProcessing、回调与状态机）、完整 App 使用流程图/时序图与 Java 示例（连拍中途切模式全链路）、系统内部全链路切换时序图、Framework 原生层（CameraDeviceClient/Camera3OfflineSession/CameraOfflineSessionClient）、HAL AIDL 协议逐条解析（含 HalStream.supportOffline 规则与离线期间保证流组合）、17 条约束速查表、与 abortCaptures/ZSL/CameraX/iOS 机制对比、面试速记 10 条；全部关键语义附 AOSP/官方出处链接 | 离线会话机制深潜、App 集成参考、系统向面试、HAL 协议核对 |
+
+## Android 开发知识文档（通用底座）
+
+| 文档 | 内容 | 适用场景 |
+|---|---|---|
+| [Android_开发知识文档.md](Android/Android_开发知识文档.md) | 通用开发知识体系（14 章，2026-10 版本事实经联网校准）：组件与生命周期（四大组件/launchMode/前台服务/进程优先级）、进程与 IPC（Zygote/Binder 一次拷贝/AIDL 三件套）、Handler 消息机制（源码级/同步屏障与 VSync/ANR）、View 体系（三大流程/事件分发/滑动冲突/RecyclerView 缓存/Surface 家族）、Jetpack 与官方架构指南（三层 UDF/ViewModel/Room/DataStore/WorkManager/Navigation/Hilt）、Kotlin 协程与 Flow（挂起原理/结构化并发/StateFlow vs SharedFlow）、Compose（重组与稳定性/副作用 API/渲染性能）、网络（OkHttp 拦截器链/Retrofit 动态代理/序列化选型/证书固定）、存储（SP 缺陷/DataStore/Scoped Storage/FileProvider）、性能索引章、稳定性与测试（ANR 定位/LeakCanary/测试金字塔）、构建与发布（AGP 9.0/R8/签名/AAB/KMP）、安全与权限（三态/演进 10→17/Keystore）、版本演进（API 30→37 速查）；与《Android\_通用面试题》69 题构成题/解对照 | Android 通用知识系统学习、通用面试准备、非相机领域的工程查阅 |
 
 ## iOS 三份主文档
 
@@ -203,3 +213,4 @@ iOS 系列文档特性：
 * 2026-10-26：《Android\_Camera\_Trace分析文档》补充消费端地图：ch1 新增 1.7"相机帧在 trace 上流向哪里"（SurfaceView 直通/SurfaceTexture GL 中转/ImageReader/录制 Surface 四类消费端的帧流向、观察 track、卡顿特征与背压传导对照表 + GL 中转背压时序图，原小结顺延为 1.8）；ch4 的 4.6 扩写为 ImageReader 背压传导链（`maxImages` 语义、忘 close/同步重活的传导链图、trace 判读三要点）并新增速查表条目"越拍越慢"；00\_intro 结构表与文档关系补充对性能分析文档 4.4/接口文档 1.8/算法集成文档第 2 章的交叉引用。
 * 2026-10-26：《Android\_Camera\_源码链路文档》新增第 5 章"从 queueBuffer 到屏幕：BufferQueue 与显示链路"（967 → 1129 行，4 章 → 5 章）：BufferQueue 官方模型与生命周期/gralloc 分配跨进程共享、BLASTBufferQueue 逐成员源码分析（one-way 事务/mMaxAcquiredBuffers=1/releaseBufferCallback 闭环/transactionCommittedCallback 与 FrameTimeline 衔接/Android Studio profiler 计数器）、SurfaceFlinger vsync 工作循环与 HWC/客户端合成分工及预旋转、SurfaceTexture 双队列与 TextureView、VSync 相位差端到端时序；A 层 = AOSP 图形官方文档三页 + frameworks/native BLASTBufferQueue.h（main 分支核对）；README 关系与 Trace 文档交叉引用同步更新。
 * 2026-10-26：《Android\_Camera\_源码链路文档》第 5 章补充 5.4.3"三相位：一次上屏挂在两个 vsync 上"（A 层，引 AOSP VSYNC 官方专页）：硬件 vsync 唯一（HWC 产生）经 DispSync 软件锁相环拆为 VSYNC（app 相位）与 SF\_VSYNC（合成相位）两路信号、相位偏移配置项与"显示 N/合成 N+1/渲染 N+2"流水线并行原理及代价（deadline 由此推导）、相机作为唯一不对齐任何相位的生产者的位置与三相位时间轴图；《Trace 分析文档》1.5.1 补"Choreographer 收 VSYNC app 相位"交叉引用（1129 → 1153 行）。
+* 2026-10-30：新增《Android\_开发知识文档》（通用开发体系，14 章 + dev\_docs/ 分章源文件）：组件与生命周期、进程与 IPC（Binder/AIDL）、Handler 消息机制与同步屏障、View 体系与事件分发、Jetpack 与官方架构指南、Kotlin 协程与 Flow、Compose（重组/副作用/渲染性能）、网络与序列化、存储（SP 缺陷/DataStore/Scoped Storage）、性能索引章、稳定性与测试、构建与发布、安全与权限、版本演进（API 30→37 速查）；版本事实经联网校准（Android 17 = API 37、AGP 9.0、Kotlin 2.x/K2）；与《Android\_通用面试题》69 题构成题/解对照，README 关系图谱新增 A9 节点。
